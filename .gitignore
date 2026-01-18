@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Thumbnails
+*.Trashes
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary files
+/tmp/
+*.tmp
+*.log
+
+# Session files (created at runtime)
+/tmp/obs-tutorial-session.txt
+/tmp/obs-recording-active.txt
+
+# Don't track actual recordings
+Tutorial Recordings/
+*.mkv
+*.mp4
+*.mov
+
+# Build artifacts
+*.app/
+!automator/*.app
+
+# Compiled source
+*.pyc
+__pycache__/

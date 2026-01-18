@@ -1,0 +1,84 @@
+{
+    "name": "Tutorial Recording",
+    "sources": [
+        {
+            "name": "Display Capture",
+            "type": "display_capture",
+            "settings": {
+                "display": 0,
+                "show_cursor": true,
+                "crop_mode": 0
+            }
+        },
+        {
+            "name": "Camera - Sony ZV-E10",
+            "type": "av_capture_device_v2",
+            "settings": {
+                "device_name": "Sony ZV-E10",
+                "preset": "AVCaptureSessionPreset1280x720",
+                "use_buffering": true,
+                "frame_rate": 30
+            }
+        },
+        {
+            "name": "Microphone - FIFINE",
+            "type": "coreaudio_input_capture",
+            "settings": {
+                "device_id": "fifine_SC3"
+            }
+        }
+    ],
+    "scenes": [
+        {
+            "name": "Tutorial Recording",
+            "items": [
+                {
+                    "name": "Display Capture",
+                    "visible": true,
+                    "position": {"x": 0, "y": 0},
+                    "bounds": {"x": 1920, "y": 1080},
+                    "bounds_type": "OBS_BOUNDS_SCALE_INNER"
+                },
+                {
+                    "name": "Camera - Sony ZV-E10",
+                    "visible": true,
+                    "position": {"x": 1520, "y": 680},
+                    "bounds": {"x": 384, "y": 216},
+                    "bounds_type": "OBS_BOUNDS_SCALE_INNER"
+                }
+            ]
+        },
+        {
+            "name": "Camera Only",
+            "items": [
+                {
+                    "name": "Camera - Sony ZV-E10",
+                    "visible": true,
+                    "position": {"x": 0, "y": 0},
+                    "bounds": {"x": 1920, "y": 1080},
+                    "bounds_type": "OBS_BOUNDS_SCALE_INNER"
+                }
+            ]
+        },
+        {
+            "name": "Screen Only",
+            "items": [
+                {
+                    "name": "Display Capture",
+                    "visible": true,
+                    "position": {"x": 0, "y": 0},
+                    "bounds": {"x": 1920, "y": 1080},
+                    "bounds_type": "OBS_BOUNDS_SCALE_INNER"
+                }
+            ]
+        }
+    ],
+    "audio_mixers": {
+        "track1": ["Microphone - FIFINE"],
+        "track2": [],
+        "track3": [],
+        "track4": [],
+        "track5": [],
+        "track6": []
+    }
+}
