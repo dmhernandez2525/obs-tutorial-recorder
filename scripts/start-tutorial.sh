@@ -2,13 +2,6 @@
 # =============================================================================
 # Start Tutorial Recording - One-Click Automated Version
 # =============================================================================
-# Double-click this to:
-# 1. Prompt for project name
-# 2. Create organized folder structure
-# 3. Launch OBS with correct settings
-# 4. Configure recording path
-# 5. Auto-start recording after countdown
-# =============================================================================
 
 set -e
 
@@ -18,7 +11,7 @@ OBS_WEBSOCKET_PORT=4455
 AUTO_START_RECORDING=true
 COUNTDOWN_SECONDS=5
 
-# Colors for output
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -32,19 +25,64 @@ log_warning() { echo "${YELLOW}[WARNING]${NC} $1"; }
 log_error() { echo "${RED}[ERROR]${NC} $1"; }
 
 # =============================================================================
-# Helper Functions
+# Project Selection
 # =============================================================================
+
+get_existing_projects() {
+    # List existing project folders, newest first
+    if [[ -d "$RECORDINGS_BASE" ]]; then
+        find "$RECORDINGS_BASE" -maxdepth 1 -type d -name "20*" 2>/dev/null | sort -r | head -10
+    fi
+}
+
+select_or_create_project() {
+    local existing_projects=($(get_existing_projects))
+    local project_list=""
+
+    # Build list for AppleScript
+    if [[ ${#existing_projects[@]} -gt 0 ]]; then
+        for proj in "${existing_projects[@]}"; do
+            local name=$(basename "$proj")
+            if [[ -n "$project_list" ]]; then
+                project_list="$project_list, \"$name\""
+            else
+                project_list="\"$name\""
+            fi
+        done
+    fi
+
+    # Show dialog with existing projects or just new project prompt
+    local result
+    if [[ -n "$project_list" ]]; then
+        result=$(osascript << EOF
+set projectList to {"➕ Create New Project", $project_list}
+set selectedProject to choose from list projectList with title "Tutorial Recording" with prompt "Select existing project or create new:" default items {"➕ Create New Project"}
+if selectedProject is false then
+    error "User cancelled"
+end if
+return item 1 of selectedProject
+EOF
+        ) || exit 1
+    else
+        result="➕ Create New Project"
+    fi
+
+    if [[ "$result" == "➕ Create New Project" ]]; then
+        # Prompt for new project name
+        local new_name=$(osascript -e '
+            set dialogResult to display dialog "Enter name for new tutorial project:" default answer "Untitled Tutorial" buttons {"Cancel", "Create"} default button "Create" with title "New Project"
+            return text returned of dialogResult
+        ' 2>/dev/null) || exit 1
+
+        echo "NEW:$new_name"
+    else
+        # Return existing project path
+        echo "EXISTING:$RECORDINGS_BASE/$result"
+    fi
+}
 
 sanitize_project_name() {
     echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/ /-/g' | sed 's/[^a-z0-9-]//g'
-}
-
-prompt_project_name() {
-    local default_name="Untitled Tutorial"
-    osascript -e "
-        set dialogResult to display dialog \"Enter project name for this tutorial:\" default answer \"$default_name\" buttons {\"Cancel\", \"Start\"} default button \"Start\" with title \"New Tutorial Recording\"
-        return text returned of dialogResult
-    " 2>/dev/null || exit 1
 }
 
 create_folder_structure() {
@@ -83,21 +121,41 @@ EOF
     echo "$final_dir"
 }
 
+# =============================================================================
+# OBS Control
+# =============================================================================
+
 is_obs_running() {
     pgrep -x "OBS" > /dev/null 2>&1
 }
 
+ensure_obs_websocket_config() {
+    # Make sure WebSocket is enabled in OBS config
+    local config_file="$HOME/Library/Application Support/obs-studio/global.ini"
+    if [[ -f "$config_file" ]]; then
+        if ! grep -q "ServerEnabled=true" "$config_file" 2>/dev/null; then
+            log_info "Enabling OBS WebSocket server..."
+            # Add WebSocket settings if missing
+            sed -i '' 's/\[OBSWebSocket\]/[OBSWebSocket]\nServerEnabled=true\nServerPort=4455\nAuthRequired=false/' "$config_file" 2>/dev/null || true
+        fi
+    fi
+}
+
 wait_for_obs_websocket() {
-    local max_attempts=30
+    local max_attempts=20
     local attempt=0
 
     while [[ $attempt -lt $max_attempts ]]; do
-        if echo '{"op": 1, "d": {"rpcVersion": 1}}' | timeout 2 websocat -n1 "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null | grep -q "Hello"; then
+        # Try to connect and get a response
+        local response=$(echo '{"op": 1, "d": {"rpcVersion": 1}}' | timeout 2 websocat -n1 "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null || true)
+        if [[ -n "$response" ]]; then
             return 0
         fi
         sleep 1
         ((attempt++))
+        echo -ne "\r${BLUE}[INFO]${NC} Waiting for OBS WebSocket... ($attempt/$max_attempts)"
     done
+    echo ""
     return 1
 }
 
@@ -119,6 +177,16 @@ obs_websocket_request() {
 set_recording_directory() {
     local dir="$1"
     obs_websocket_request "SetRecordDirectory" '{"recordDirectory": "'"$dir"'"}'
+}
+
+set_profile() {
+    local profile="$1"
+    obs_websocket_request "SetCurrentProfile" '{"profileName": "'"$profile"'"}'
+}
+
+set_scene_collection() {
+    local collection="$1"
+    obs_websocket_request "SetCurrentSceneCollection" '{"sceneCollectionName": "'"$collection"'"}'
 }
 
 start_recording() {
@@ -150,26 +218,39 @@ main() {
     echo "${GREEN}╚════════════════════════════════════════╝${NC}"
     echo ""
 
-    # Step 1: Get project name
-    log_info "Getting project name..."
-    PROJECT_NAME=$(prompt_project_name)
-    log_success "Project: $PROJECT_NAME"
+    # Step 1: Select or create project
+    log_info "Select project..."
+    local selection=$(select_or_create_project)
 
-    # Step 2: Create folders
-    log_info "Creating folder structure..."
-    PROJECT_DIR=$(create_folder_structure "$PROJECT_NAME")
+    local PROJECT_DIR
+    local PROJECT_NAME
+
+    if [[ "$selection" == NEW:* ]]; then
+        PROJECT_NAME="${selection#NEW:}"
+        log_info "Creating new project: $PROJECT_NAME"
+        PROJECT_DIR=$(create_folder_structure "$PROJECT_NAME")
+        log_success "Created: $PROJECT_DIR"
+    else
+        PROJECT_DIR="${selection#EXISTING:}"
+        PROJECT_NAME=$(basename "$PROJECT_DIR" | sed 's/^[0-9-]*_//')
+        log_success "Using existing project: $PROJECT_NAME"
+    fi
+
     RAW_DIR="$PROJECT_DIR/raw"
-    log_success "Created: $PROJECT_DIR"
 
     # Save session info
     echo "$PROJECT_DIR" > /tmp/obs-tutorial-session.txt
     touch /tmp/obs-recording-active.txt
 
+    # Step 2: Ensure OBS WebSocket is configured
+    ensure_obs_websocket_config
+
     # Step 3: Launch OBS
     log_info "Launching OBS..."
     if ! is_obs_running; then
-        open -a "OBS"
-        sleep 2
+        # Launch OBS with specific profile and scene collection
+        open -a "OBS" --args --profile "Tutorial Recording" --collection "Tutorial Recording"
+        sleep 3
 
         # Wait for OBS to fully start
         local waited=0
@@ -189,8 +270,15 @@ main() {
         if wait_for_obs_websocket; then
             log_success "WebSocket connected"
 
+            # Switch to correct profile and scene collection
+            log_info "Loading Tutorial Recording profile..."
+            set_profile "Tutorial Recording"
+            sleep 1
+            set_scene_collection "Tutorial Recording"
+            sleep 1
+
             # Set recording directory
-            log_info "Setting recording path to: $RAW_DIR"
+            log_info "Setting recording path: $RAW_DIR"
             set_recording_directory "$RAW_DIR"
             log_success "Recording path configured"
 
@@ -221,17 +309,20 @@ main() {
             fi
         else
             log_warning "Could not connect to OBS WebSocket"
+            log_info "You may need to enable WebSocket in OBS:"
+            log_info "  Tools > WebSocket Server Settings > Enable"
+            log_info ""
+            log_info "Recording path: $RAW_DIR"
             log_info "Please start recording manually in OBS"
-            log_info "Set recording path to: $RAW_DIR"
         fi
     else
-        log_warning "websocat not installed - manual recording required"
+        log_warning "websocat not installed"
+        log_info "Install with: brew install websocat"
         log_info "Recording path: $RAW_DIR"
     fi
 
-    # Keep terminal open with status
     echo ""
-    echo "This window will stay open. Close it when done or after stopping recording."
+    echo "This window will stay open. Close after recording."
     echo ""
 
     # Open project folder
