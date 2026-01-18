@@ -43,7 +43,7 @@ obs_ws_request() {
     echo "$result"
 }
 
-# Simpler version - just fire and forget with identify
+# Simpler version - fire and forget with identify
 obs_ws_send() {
     local request_type="$1"
     local request_data="$2"
@@ -56,19 +56,20 @@ obs_ws_send() {
         request_msg='{"op":6,"d":{"requestType":"'"$request_type"'","requestId":"'"$request_id"'"}}'
     fi
 
+    # Use grep to get the response (op:7) rather than events (op:5)
     {
-        sleep 0.2
+        sleep 0.3
         echo '{"op":1,"d":{"rpcVersion":1}}'
         sleep 0.3
         echo "$request_msg"
-        sleep 0.2
-    } | timeout 3 websocat "ws://localhost:${OBS_WS_PORT}" 2>/dev/null
+        sleep 0.5
+    } | timeout 5 websocat "ws://localhost:${OBS_WS_PORT}" 2>/dev/null | grep "\"op\":7" | head -1
 }
 
 # Check if WebSocket is available
 obs_ws_check() {
-    local result=$(timeout 2 websocat -n1 "ws://localhost:${OBS_WS_PORT}" 2>/dev/null)
-    [[ -n "$result" ]]
+    # Pipe approach works, -n1 fails on some systems
+    echo '{"op":1,"d":{"rpcVersion":1}}' | timeout 2 websocat "ws://localhost:${OBS_WS_PORT}" 2>/dev/null | grep -q "obsStudioVersion"
 }
 
 # Wait for OBS WebSocket to become available

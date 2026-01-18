@@ -43,17 +43,19 @@ obs_ws_send() {
     fi
 
     # Proper handshake: wait for Hello, send Identify, then send request
+    # Use grep to get the response (op:7) rather than events (op:5)
     {
-        sleep 0.2
+        sleep 0.3
         echo '{"op":1,"d":{"rpcVersion":1}}'
         sleep 0.3
         echo "$request_msg"
-        sleep 0.2
-    } | timeout 4 websocat "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null | tail -1
+        sleep 0.5
+    } | timeout 5 websocat "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null | grep "\"op\":7" | head -1
 }
 
 obs_ws_check() {
-    timeout 2 websocat -n1 "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null | grep -q "obsStudioVersion"
+    # Send identify and check for Hello response (pipe approach works, -n1 fails on some systems)
+    echo '{"op":1,"d":{"rpcVersion":1}}' | timeout 2 websocat "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null | grep -q "obsStudioVersion"
 }
 
 obs_ws_wait() {

@@ -36,13 +36,14 @@ obs_ws_send() {
         request_msg='{"op":6,"d":{"requestType":"'"$request_type"'","requestId":"'"$request_id"'"}}'
     fi
 
+    # Use grep to get the response (op:7) rather than events (op:5)
     {
-        sleep 0.2
+        sleep 0.3
         echo '{"op":1,"d":{"rpcVersion":1}}'
         sleep 0.3
         echo "$request_msg"
-        sleep 0.2
-    } | timeout 4 websocat "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null | tail -1
+        sleep 0.5
+    } | timeout 5 websocat "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null | grep "\"op\":7" | head -1
 }
 
 # =============================================================================
