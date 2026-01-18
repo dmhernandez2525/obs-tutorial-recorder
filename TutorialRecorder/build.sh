@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="Tutorial Recorder"
 APP_PATH="$HOME/Desktop/${APP_NAME}.app"
 BUILD_DIR="$SCRIPT_DIR/build"
+SOURCES_DIR="$SCRIPT_DIR/Sources"
 
 echo "Building Tutorial Recorder..."
 
@@ -15,13 +16,29 @@ rm -rf "$BUILD_DIR"
 rm -rf "$APP_PATH"
 mkdir -p "$BUILD_DIR"
 
+# Collect all Swift source files
+SWIFT_FILES=(
+    "$SOURCES_DIR/Utils.swift"
+    "$SOURCES_DIR/SyncManager.swift"
+    "$SOURCES_DIR/TranscriptionManager.swift"
+    "$SOURCES_DIR/RecordingManager.swift"
+    "$SOURCES_DIR/Windows/ProgressWindow.swift"
+    "$SOURCES_DIR/Windows/SyncConfigWindow.swift"
+    "$SOURCES_DIR/Windows/SyncStatusWindow.swift"
+    "$SOURCES_DIR/Windows/MainPanel.swift"
+    "$SOURCES_DIR/AppDelegate.swift"
+    "$SOURCES_DIR/main.swift"
+)
+
+echo "Compiling ${#SWIFT_FILES[@]} source files..."
+
 # Compile Swift
 swiftc -o "$BUILD_DIR/TutorialRecorder" \
     -O \
     -target arm64-apple-macosx12.0 \
     -sdk $(xcrun --show-sdk-path) \
     -framework Cocoa \
-    "$SCRIPT_DIR/main.swift"
+    "${SWIFT_FILES[@]}"
 
 echo "Creating app bundle..."
 
@@ -52,6 +69,8 @@ cat > "$APP_PATH/Contents/Info.plist" << 'EOF'
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSUIElement</key>
@@ -64,10 +83,20 @@ cat > "$APP_PATH/Contents/Info.plist" << 'EOF'
 </plist>
 EOF
 
-# Create icon (using system icon for now)
-# We'll use iconutil to create proper icon later
+# Create icon from iconset
+echo "Building app icon..."
+if [ -d "$SCRIPT_DIR/AppIcon.iconset" ]; then
+    iconutil -c icns "$SCRIPT_DIR/AppIcon.iconset" -o "$APP_PATH/Contents/Resources/AppIcon.icns"
+elif [ -f "$SCRIPT_DIR/AppIcon.icns" ]; then
+    cp "$SCRIPT_DIR/AppIcon.icns" "$APP_PATH/Contents/Resources/"
+fi
 
-echo "Done! App created at: $APP_PATH"
+# Touch the app to refresh icon cache
+touch "$APP_PATH"
+
+echo ""
+echo "✅ Build successful!"
+echo "   App created at: $APP_PATH"
 echo ""
 echo "To add to Login Items (auto-start):"
 echo "  System Settings > General > Login Items > Add '$APP_NAME'"

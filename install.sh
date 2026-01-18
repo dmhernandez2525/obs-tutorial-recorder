@@ -22,8 +22,6 @@ SCRIPTS_DIR="$SCRIPT_DIR/scripts"
 # Configuration
 RECORDINGS_BASE="$HOME/Desktop/Tutorial Recordings"
 OBS_PLUGINS_DIR="$HOME/Library/Application Support/obs-studio/plugins"
-SOURCE_RECORD_VERSION="0.4.6"
-SOURCE_RECORD_URL="https://github.com/exeldro/obs-source-record/releases/download/${SOURCE_RECORD_VERSION}/source-record-${SOURCE_RECORD_VERSION}-macos.zip"
 
 # Colors
 RED='\033[0;31m'
@@ -79,7 +77,7 @@ preflight_checks() {
 install_dependencies() {
     log_step "Installing Dependencies"
 
-    local packages=("websocat" "ffmpeg")
+    local packages=("websocat" "ffmpeg" "rclone" "whisper-cpp")
 
     for pkg in "${packages[@]}"; do
         if ! command -v "$pkg" &> /dev/null; then
@@ -90,6 +88,36 @@ install_dependencies() {
             log_success "$pkg already installed"
         fi
     done
+}
+
+# =============================================================================
+# Setup Transcription (Whisper)
+# =============================================================================
+
+setup_transcription() {
+    log_step "Setting Up Transcription"
+
+    local MODELS_DIR="$HOME/.cache/whisper"
+    local MODEL_FILE="ggml-small.en.bin"
+    local MODEL_PATH="$MODELS_DIR/$MODEL_FILE"
+    local MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$MODEL_FILE"
+
+    mkdir -p "$MODELS_DIR"
+
+    if [[ -f "$MODEL_PATH" ]]; then
+        log_success "Whisper model already downloaded"
+    else
+        log_info "Downloading Whisper small model (500MB)..."
+        log_info "This provides higher accuracy for tutorial content."
+        echo ""
+
+        if curl -L "$MODEL_URL" -o "$MODEL_PATH" --progress-bar; then
+            log_success "Whisper model downloaded to $MODELS_DIR"
+        else
+            log_warning "Could not download Whisper model automatically"
+            log_info "You can download it later from Preferences"
+        fi
+    fi
 }
 
 # =============================================================================
@@ -114,31 +142,16 @@ install_obs() {
 # =============================================================================
 
 install_source_record() {
-    log_step "Source Record Plugin (Optional)"
+    log_step "Source Record Plugin"
 
-    local plugin_dir="$OBS_PLUGINS_DIR/source-record.plugin"
-
-    # Create plugins directory if needed
-    mkdir -p "$OBS_PLUGINS_DIR"
-
-    if [[ -d "$plugin_dir" ]] || [[ -d "$OBS_PLUGINS_DIR/obs-source-record" ]]; then
-        log_success "Source Record plugin already installed"
-        return 0
+    # Use the dedicated setup script to install the plugin
+    if [[ -f "$SCRIPTS_DIR/setup-source-record.sh" ]]; then
+        "$SCRIPTS_DIR/setup-source-record.sh" install
+    else
+        log_warning "setup-source-record.sh not found, skipping plugin installation"
+        log_info "Source Record plugin enables ISO recordings (separate file per source)"
+        log_info "Download manually from: https://obsproject.com/forum/resources/source-record.1285/"
     fi
-
-    # Source Record binaries are only available from OBS forum (not GitHub)
-    log_info "Source Record plugin enables ISO recordings (separate file per source)"
-    log_info ""
-    log_info "To install (optional but recommended):"
-    echo ""
-    echo "  1. Download from: ${CYAN}https://obsproject.com/forum/resources/source-record.1285/${NC}"
-    echo "  2. Extract the zip file"
-    echo "  3. Copy the .plugin file to:"
-    echo "     ${CYAN}$OBS_PLUGINS_DIR/${NC}"
-    echo ""
-    log_info "The recorder will work without it (single combined recording)"
-    log_info "With it, each source records to a separate file for editing flexibility"
-    echo ""
 }
 
 # =============================================================================
@@ -225,6 +238,8 @@ build_menubar_app() {
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSUIElement</key>
@@ -236,6 +251,17 @@ build_menubar_app() {
 </dict>
 </plist>
 PLIST
+
+    # Build and copy app icon
+    if [[ -d "$source_dir/AppIcon.iconset" ]]; then
+        log_info "Building app icon..."
+        iconutil -c icns "$source_dir/AppIcon.iconset" -o "$app_path/Contents/Resources/AppIcon.icns" 2>/dev/null || true
+    elif [[ -f "$source_dir/AppIcon.icns" ]]; then
+        cp "$source_dir/AppIcon.icns" "$app_path/Contents/Resources/"
+    fi
+
+    # Touch the app to refresh icon cache
+    touch "$app_path"
 
     log_success "Created: ~/Desktop/$app_name.app"
 
@@ -336,12 +362,15 @@ print_instructions() {
     echo "  ${GREEN}Dependencies:${NC}"
     echo "    - websocat (WebSocket communication)"
     echo "    - ffmpeg (video processing)"
+    echo "    - rclone (cloud sync to Google Drive)"
+    echo "    - whisper-cpp (audio transcription)"
     echo "    - OBS Studio"
     echo "    - Source Record plugin (ISO recordings)"
     echo ""
     echo "  ${GREEN}Menubar App:${NC}"
     echo "    - Tutorial Recorder.app (on Desktop)"
     echo "    - Adds icon to menu bar for quick control"
+    echo "    - Includes cloud sync integration"
     echo ""
     echo "  ${GREEN}Folders:${NC}"
     echo "    - ~/Desktop/Tutorial Recordings/"
@@ -362,13 +391,10 @@ print_instructions() {
     echo "     - Video Capture Device (your camera)"
     echo "     - Audio Input Capture (your microphone)"
     echo ""
-    echo "  ${YELLOW}3. Add Source Record Filter to Each Source:${NC}"
-    echo "     For each source you want to record separately:"
-    echo "     - Right-click the source > Filters"
-    echo "     - Click + under 'Effect Filters'"
-    echo "     - Select 'Source Record'"
-    echo "     - Configure recording format (MOV or MKV recommended)"
-    echo "     - Leave file path empty (uses default ~/Movies)"
+    echo "  ${YELLOW}3. Add Source Record Filters (Automated):${NC}"
+    echo "     After adding sources, run this to add filters automatically:"
+    echo "     ${CYAN}./scripts/setup-source-record.sh filters${NC}"
+    echo "     (Or add manually: right-click source > Filters > + > Source Record)"
     echo ""
     echo "  ${YELLOW}4. Grant Permissions:${NC}"
     echo "     System Settings > Privacy & Security:"
@@ -376,6 +402,14 @@ print_instructions() {
     echo "     - Camera: OBS"
     echo "     - Microphone: OBS"
     echo "     - Accessibility: Terminal"
+    echo ""
+    echo "${BOLD}${CYAN}=== OPTIONAL: Cloud Sync Setup ===${NC}"
+    echo ""
+    echo "  To backup recordings to Google Drive:"
+    echo "  ${CYAN}./scripts/setup-cloud-sync.sh configure${NC}"
+    echo ""
+    echo "  This enables automatic backup of recordings after each session."
+    echo "  Access sync controls from the menubar app's Cloud Sync submenu."
     echo ""
     echo "${BOLD}${GREEN}Ready to use!${NC}"
     echo ""
@@ -401,6 +435,7 @@ main() {
 
     preflight_checks
     install_dependencies
+    setup_transcription
     install_obs
     install_source_record
     make_scripts_executable

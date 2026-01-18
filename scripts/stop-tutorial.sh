@@ -19,10 +19,26 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-log_info() { echo "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo "${GREEN}[OK]${NC} $1"; }
-log_warning() { echo "${YELLOW}[WARNING]${NC} $1"; }
-log_error() { echo "${RED}[ERROR]${NC} $1"; }
+log_info() { echo "${BLUE}[INFO]${NC} $1"; write_log "INFO" "$1"; }
+log_success() { echo "${GREEN}[OK]${NC} $1"; write_log "SUCCESS" "$1"; }
+log_warning() { echo "${YELLOW}[WARNING]${NC} $1"; write_log "WARNING" "$1"; }
+log_error() { echo "${RED}[ERROR]${NC} $1"; write_log "ERROR" "$1"; }
+
+# Write to session log file for debugging
+write_log() {
+    local level="$1"
+    local message="$2"
+    local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+
+    # Get session log from session file
+    if [[ -f "$SESSION_FILE" ]]; then
+        local project_dir=$(cat "$SESSION_FILE")
+        local log_file="$project_dir/session.log"
+        if [[ -d "$project_dir" ]]; then
+            echo "[$timestamp] [$level] $message" >> "$log_file"
+        fi
+    fi
+}
 
 # =============================================================================
 # OBS WebSocket

@@ -21,10 +21,28 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-log_info() { echo "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo "${GREEN}[SUCCESS]${NC} $1"; }
-log_warning() { echo "${YELLOW}[WARNING]${NC} $1"; }
-log_error() { echo "${RED}[ERROR]${NC} $1"; }
+log_info() { echo "${BLUE}[INFO]${NC} $1"; write_log "INFO" "$1"; }
+log_success() { echo "${GREEN}[SUCCESS]${NC} $1"; write_log "SUCCESS" "$1"; }
+log_warning() { echo "${YELLOW}[WARNING]${NC} $1"; write_log "WARNING" "$1"; }
+log_error() { echo "${RED}[ERROR]${NC} $1"; write_log "ERROR" "$1"; }
+
+# Write to session log file for debugging
+write_log() {
+    local level="$1"
+    local message="$2"
+    local log_file="${SESSION_LOG_FILE:-/tmp/tutorial-recorder.log}"
+    local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+    echo "[$timestamp] [$level] $message" >> "$log_file"
+}
+
+init_session_log() {
+    local project_dir="$1"
+    SESSION_LOG_FILE="$project_dir/session.log"
+    echo "=============================================" >> "$SESSION_LOG_FILE"
+    echo "Session started: $(date)" >> "$SESSION_LOG_FILE"
+    echo "Project: $project_dir" >> "$SESSION_LOG_FILE"
+    echo "=============================================" >> "$SESSION_LOG_FILE"
+}
 
 # =============================================================================
 # OBS WebSocket Functions (with proper handshake)
@@ -195,6 +213,10 @@ main() {
     fi
 
     RAW_DIR="$PROJECT_DIR/raw"
+
+    # Initialize session logging
+    init_session_log "$PROJECT_DIR"
+    log_info "Session log initialized at $PROJECT_DIR/session.log"
 
     # Save session info
     echo "$PROJECT_DIR" > /tmp/obs-tutorial-session.txt
