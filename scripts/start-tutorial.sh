@@ -11,6 +11,8 @@ OBS_WEBSOCKET_PORT=4455
 AUTO_START_RECORDING=true
 COUNTDOWN_SECONDS=5
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -25,11 +27,55 @@ log_warning() { echo "${YELLOW}[WARNING]${NC} $1"; }
 log_error() { echo "${RED}[ERROR]${NC} $1"; }
 
 # =============================================================================
+# OBS WebSocket Functions (with proper handshake)
+# =============================================================================
+
+obs_ws_send() {
+    local request_type="$1"
+    local request_data="$2"
+    local request_id="req_$(date +%s%N)"
+
+    local request_msg
+    if [[ -n "$request_data" ]]; then
+        request_msg='{"op":6,"d":{"requestType":"'"$request_type"'","requestId":"'"$request_id"'","requestData":'"$request_data"'}}'
+    else
+        request_msg='{"op":6,"d":{"requestType":"'"$request_type"'","requestId":"'"$request_id"'"}}'
+    fi
+
+    # Proper handshake: wait for Hello, send Identify, then send request
+    {
+        sleep 0.2
+        echo '{"op":1,"d":{"rpcVersion":1}}'
+        sleep 0.3
+        echo "$request_msg"
+        sleep 0.2
+    } | timeout 4 websocat "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null | tail -1
+}
+
+obs_ws_check() {
+    timeout 2 websocat -n1 "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null | grep -q "obsStudioVersion"
+}
+
+obs_ws_wait() {
+    local max_attempts=20
+    local attempt=0
+    while [[ $attempt -lt $max_attempts ]]; do
+        if obs_ws_check; then
+            return 0
+        fi
+        sleep 1
+        ((attempt++))
+        echo -ne "\r${BLUE}[INFO]${NC} Waiting for OBS WebSocket... ($attempt/$max_attempts)"
+    done
+    echo ""
+    return 1
+}
+
+# =============================================================================
 # Project Selection
 # =============================================================================
 
 get_existing_projects() {
-    # List existing project folders, newest first
     if [[ -d "$RECORDINGS_BASE" ]]; then
         find "$RECORDINGS_BASE" -maxdepth 1 -type d -name "20*" 2>/dev/null | sort -r | head -10
     fi
@@ -39,7 +85,6 @@ select_or_create_project() {
     local existing_projects=($(get_existing_projects))
     local project_list=""
 
-    # Build list for AppleScript
     if [[ ${#existing_projects[@]} -gt 0 ]]; then
         for proj in "${existing_projects[@]}"; do
             local name=$(basename "$proj")
@@ -51,7 +96,6 @@ select_or_create_project() {
         done
     fi
 
-    # Show dialog with existing projects or just new project prompt
     local result
     if [[ -n "$project_list" ]]; then
         result=$(osascript << EOF
@@ -68,15 +112,12 @@ EOF
     fi
 
     if [[ "$result" == "➕ Create New Project" ]]; then
-        # Prompt for new project name
         local new_name=$(osascript -e '
             set dialogResult to display dialog "Enter name for new tutorial project:" default answer "Untitled Tutorial" buttons {"Cancel", "Create"} default button "Create" with title "New Project"
             return text returned of dialogResult
         ' 2>/dev/null) || exit 1
-
         echo "NEW:$new_name"
     else
-        # Return existing project path
         echo "EXISTING:$RECORDINGS_BASE/$result"
     fi
 }
@@ -117,93 +158,7 @@ create_folder_structure() {
   "description": ""
 }
 EOF
-
     echo "$final_dir"
-}
-
-# =============================================================================
-# OBS Control
-# =============================================================================
-
-is_obs_running() {
-    pgrep -x "OBS" > /dev/null 2>&1
-}
-
-ensure_obs_websocket_config() {
-    # Make sure WebSocket is enabled in OBS config
-    local config_file="$HOME/Library/Application Support/obs-studio/global.ini"
-    if [[ -f "$config_file" ]]; then
-        if ! grep -q "ServerEnabled=true" "$config_file" 2>/dev/null; then
-            log_info "Enabling OBS WebSocket server..."
-            # Add WebSocket settings if missing
-            sed -i '' 's/\[OBSWebSocket\]/[OBSWebSocket]\nServerEnabled=true\nServerPort=4455\nAuthRequired=false/' "$config_file" 2>/dev/null || true
-        fi
-    fi
-}
-
-wait_for_obs_websocket() {
-    local max_attempts=20
-    local attempt=0
-
-    while [[ $attempt -lt $max_attempts ]]; do
-        # Try to connect and get a response
-        local response=$(echo '{"op": 1, "d": {"rpcVersion": 1}}' | timeout 2 websocat -n1 "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null || true)
-        if [[ -n "$response" ]]; then
-            return 0
-        fi
-        sleep 1
-        ((attempt++))
-        echo -ne "\r${BLUE}[INFO]${NC} Waiting for OBS WebSocket... ($attempt/$max_attempts)"
-    done
-    echo ""
-    return 1
-}
-
-obs_websocket_request() {
-    local request_type="$1"
-    local request_data="$2"
-    local request_id=$(date +%s%N)
-
-    local message
-    if [[ -n "$request_data" ]]; then
-        message='{"op": 6, "d": {"requestType": "'"$request_type"'", "requestId": "'"$request_id"'", "requestData": '"$request_data"'}}'
-    else
-        message='{"op": 6, "d": {"requestType": "'"$request_type"'", "requestId": "'"$request_id"'"}}'
-    fi
-
-    echo "$message" | timeout 5 websocat -n1 "ws://localhost:${OBS_WEBSOCKET_PORT}" 2>/dev/null
-}
-
-set_recording_directory() {
-    local dir="$1"
-    obs_websocket_request "SetRecordDirectory" '{"recordDirectory": "'"$dir"'"}'
-}
-
-set_profile() {
-    local profile="$1"
-    obs_websocket_request "SetCurrentProfile" '{"profileName": "'"$profile"'"}'
-}
-
-set_scene_collection() {
-    local collection="$1"
-    obs_websocket_request "SetCurrentSceneCollection" '{"sceneCollectionName": "'"$collection"'"}'
-}
-
-start_recording() {
-    obs_websocket_request "StartRecord"
-}
-
-show_countdown() {
-    local seconds=$1
-    local project_name="$2"
-
-    for ((i=seconds; i>0; i--)); do
-        osascript -e "display notification \"Starting in $i...\" with title \"Recording: $project_name\"" 2>/dev/null &
-        echo "${CYAN}Recording starts in $i...${NC}"
-        sleep 1
-    done
-
-    osascript -e "display notification \"Recording NOW!\" with title \"Recording Started\" sound name \"Glass\"" 2>/dev/null &
 }
 
 # =============================================================================
@@ -242,83 +197,71 @@ main() {
     echo "$PROJECT_DIR" > /tmp/obs-tutorial-session.txt
     touch /tmp/obs-recording-active.txt
 
-    # Step 2: Ensure OBS WebSocket is configured
-    ensure_obs_websocket_config
-
-    # Step 3: Launch OBS
-    log_info "Launching OBS..."
-    if ! is_obs_running; then
-        # Launch OBS with specific profile and scene collection
-        open -a "OBS" --args --profile "Tutorial Recording" --collection "Tutorial Recording"
+    # Step 2: Launch OBS if needed
+    log_info "Checking OBS..."
+    if ! pgrep -x "OBS" > /dev/null 2>&1; then
+        log_info "Launching OBS..."
+        open -a "OBS"
         sleep 3
-
-        # Wait for OBS to fully start
-        local waited=0
-        while ! is_obs_running && [[ $waited -lt 15 ]]; do
-            sleep 1
-            ((waited++))
-        done
     else
-        osascript -e 'tell application "OBS" to activate' 2>/dev/null || true
+        log_success "OBS is already running"
     fi
-    log_success "OBS is running"
 
-    # Step 4: Configure via WebSocket
+    # Step 3: Connect via WebSocket
+    if ! command -v websocat &> /dev/null; then
+        log_error "websocat not installed. Run: brew install websocat"
+        exit 1
+    fi
+
     log_info "Connecting to OBS WebSocket..."
+    if ! obs_ws_wait; then
+        log_error "Could not connect to OBS WebSocket"
+        log_info "Enable it in OBS: Tools > WebSocket Server Settings"
+        open "$PROJECT_DIR"
+        exit 1
+    fi
+    log_success "WebSocket connected"
 
-    if command -v websocat &> /dev/null; then
-        if wait_for_obs_websocket; then
-            log_success "WebSocket connected"
+    # Step 4: Set recording directory
+    log_info "Setting recording path: $RAW_DIR"
+    obs_ws_send "SetRecordDirectory" '{"recordDirectory":"'"$RAW_DIR"'"}' > /dev/null
+    log_success "Recording path configured"
 
-            # Switch to correct profile and scene collection
-            log_info "Loading Tutorial Recording profile..."
-            set_profile "Tutorial Recording"
+    # Step 5: Start recording
+    if [[ "$AUTO_START_RECORDING" == "true" ]]; then
+        echo ""
+        echo "${CYAN}════════════════════════════════════════${NC}"
+        for ((i=COUNTDOWN_SECONDS; i>0; i--)); do
+            echo "Recording starts in ${CYAN}$i${NC}..."
+            osascript -e "display notification \"Starting in $i...\" with title \"$PROJECT_NAME\"" 2>/dev/null &
             sleep 1
-            set_scene_collection "Tutorial Recording"
-            sleep 1
+        done
+        echo "${CYAN}════════════════════════════════════════${NC}"
+        echo ""
 
-            # Set recording directory
-            log_info "Setting recording path: $RAW_DIR"
-            set_recording_directory "$RAW_DIR"
-            log_success "Recording path configured"
+        log_info "Starting recording..."
+        local result=$(obs_ws_send "StartRecord")
 
-            # Auto-start recording
-            if [[ "$AUTO_START_RECORDING" == "true" ]]; then
-                echo ""
-                echo "${CYAN}════════════════════════════════════════${NC}"
-                show_countdown $COUNTDOWN_SECONDS "$PROJECT_NAME"
-                echo "${CYAN}════════════════════════════════════════${NC}"
-                echo ""
+        if echo "$result" | grep -q '"requestStatus"'; then
+            log_success "Recording started!"
+            osascript -e 'display notification "Recording NOW!" with title "Recording Started" sound name "Glass"' 2>/dev/null &
 
-                log_info "Starting recording..."
-                start_recording
-                log_success "Recording started!"
-
-                echo ""
-                echo "${GREEN}╔════════════════════════════════════════╗${NC}"
-                echo "${GREEN}║         RECORDING IN PROGRESS          ║${NC}"
-                echo "${GREEN}╚════════════════════════════════════════╝${NC}"
-                echo ""
-                echo "Project: ${CYAN}$PROJECT_NAME${NC}"
-                echo "Saving to: ${CYAN}$RAW_DIR${NC}"
-                echo ""
-                echo "To stop recording:"
-                echo "  • Double-click ${YELLOW}Stop Tutorial.app${NC} on Desktop"
-                echo "  • Or press ${YELLOW}Cmd+Shift+S${NC} in OBS"
-                echo ""
-            fi
+            echo ""
+            echo "${GREEN}╔════════════════════════════════════════╗${NC}"
+            echo "${GREEN}║         RECORDING IN PROGRESS          ║${NC}"
+            echo "${GREEN}╚════════════════════════════════════════╝${NC}"
+            echo ""
+            echo "Project: ${CYAN}$PROJECT_NAME${NC}"
+            echo "Saving to: ${CYAN}$RAW_DIR${NC}"
+            echo ""
+            echo "To stop recording:"
+            echo "  • Double-click ${YELLOW}Stop Tutorial.app${NC} on Desktop"
+            echo "  • Or click ${YELLOW}Stop Recording${NC} in OBS"
+            echo ""
         else
-            log_warning "Could not connect to OBS WebSocket"
-            log_info "You may need to enable WebSocket in OBS:"
-            log_info "  Tools > WebSocket Server Settings > Enable"
-            log_info ""
-            log_info "Recording path: $RAW_DIR"
-            log_info "Please start recording manually in OBS"
+            log_warning "Recording may not have started. Check OBS manually."
+            log_info "Response: $result"
         fi
-    else
-        log_warning "websocat not installed"
-        log_info "Install with: brew install websocat"
-        log_info "Recording path: $RAW_DIR"
     fi
 
     echo ""
