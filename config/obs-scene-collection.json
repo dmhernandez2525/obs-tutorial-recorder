@@ -1,84 +1,255 @@
 {
+    "current_program_scene": "Tutorial Recording",
+    "current_scene": "Tutorial Recording",
     "name": "Tutorial Recording",
+    "scene_order": [
+        {"name": "Tutorial Recording"},
+        {"name": "Screen Only"},
+        {"name": "Camera Only"}
+    ],
     "sources": [
         {
+            "balance": 0.5,
+            "deinterlace_field_order": 0,
+            "deinterlace_mode": 0,
+            "enabled": true,
+            "flags": 0,
+            "hotkeys": {},
+            "id": "screen_capture",
+            "mixers": 0,
+            "monitoring_type": 0,
+            "muted": false,
             "name": "Display Capture",
-            "type": "display_capture",
+            "prev_ver": 536870916,
+            "private_settings": {},
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
             "settings": {
+                "application": "",
+                "crop_mode": 0,
                 "display": 0,
+                "hide_cursor": false,
+                "hide_obs": true,
                 "show_cursor": true,
-                "crop_mode": 0
-            }
+                "show_empty_names": false,
+                "show_hidden_windows": false,
+                "type": 0,
+                "window": 0
+            },
+            "sync": 0,
+            "versioned_id": "screen_capture",
+            "volume": 1.0
         },
         {
+            "balance": 0.5,
+            "deinterlace_field_order": 0,
+            "deinterlace_mode": 0,
+            "enabled": true,
+            "flags": 0,
+            "hotkeys": {},
+            "id": "av_capture_device_v2",
+            "mixers": 0,
+            "monitoring_type": 0,
+            "muted": true,
             "name": "Camera - Sony ZV-E10",
-            "type": "av_capture_device_v2",
+            "prev_ver": 536870916,
+            "private_settings": {},
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
             "settings": {
-                "device_name": "Sony ZV-E10",
                 "preset": "AVCaptureSessionPreset1280x720",
-                "use_buffering": true,
-                "frame_rate": 30
-            }
+                "device": "0x141000054c0de3",
+                "device_name": "ZV-E10",
+                "use_preset": true,
+                "frame_rate": -1
+            },
+            "sync": 0,
+            "versioned_id": "av_capture_device_v2",
+            "volume": 1.0
         },
         {
+            "balance": 0.5,
+            "deinterlace_field_order": 0,
+            "deinterlace_mode": 0,
+            "enabled": true,
+            "flags": 0,
+            "hotkeys": {},
+            "id": "coreaudio_input_capture",
+            "mixers": 255,
+            "monitoring_type": 0,
+            "muted": false,
             "name": "Microphone - FIFINE",
-            "type": "coreaudio_input_capture",
+            "prev_ver": 536870916,
+            "private_settings": {},
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
             "settings": {
                 "device_id": "fifine_SC3"
-            }
+            },
+            "sync": 0,
+            "versioned_id": "coreaudio_input_capture",
+            "volume": 1.0
         }
     ],
     "scenes": [
         {
+            "custom_size": false,
+            "hotkeys": {},
+            "id": "scene",
+            "id_counter": 4,
             "name": "Tutorial Recording",
-            "items": [
-                {
-                    "name": "Display Capture",
-                    "visible": true,
-                    "position": {"x": 0, "y": 0},
-                    "bounds": {"x": 1920, "y": 1080},
-                    "bounds_type": "OBS_BOUNDS_SCALE_INNER"
-                },
-                {
-                    "name": "Camera - Sony ZV-E10",
-                    "visible": true,
-                    "position": {"x": 1520, "y": 680},
-                    "bounds": {"x": 384, "y": 216},
-                    "bounds_type": "OBS_BOUNDS_SCALE_INNER"
-                }
-            ]
+            "private_settings": {},
+            "settings": {
+                "custom_size": false,
+                "items": [
+                    {
+                        "align": 5,
+                        "bounds": {"x": 1920.0, "y": 1080.0},
+                        "bounds_align": 0,
+                        "bounds_type": 2,
+                        "crop_bottom": 0,
+                        "crop_left": 0,
+                        "crop_right": 0,
+                        "crop_top": 0,
+                        "group_item_backup": false,
+                        "id": 1,
+                        "locked": false,
+                        "name": "Display Capture",
+                        "pos": {"x": 0.0, "y": 0.0},
+                        "private_settings": {},
+                        "rot": 0.0,
+                        "scale": {"x": 1.0, "y": 1.0},
+                        "scale_filter": "disable",
+                        "show_transition": {"duration": 0},
+                        "hide_transition": {"duration": 0},
+                        "visible": true
+                    },
+                    {
+                        "align": 5,
+                        "bounds": {"x": 384.0, "y": 216.0},
+                        "bounds_align": 0,
+                        "bounds_type": 2,
+                        "crop_bottom": 0,
+                        "crop_left": 0,
+                        "crop_right": 0,
+                        "crop_top": 0,
+                        "group_item_backup": false,
+                        "id": 2,
+                        "locked": false,
+                        "name": "Camera - Sony ZV-E10",
+                        "pos": {"x": 1520.0, "y": 848.0},
+                        "private_settings": {},
+                        "rot": 0.0,
+                        "scale": {"x": 1.0, "y": 1.0},
+                        "scale_filter": "disable",
+                        "show_transition": {"duration": 0},
+                        "hide_transition": {"duration": 0},
+                        "visible": true
+                    },
+                    {
+                        "align": 5,
+                        "bounds": {"x": 0.0, "y": 0.0},
+                        "bounds_align": 0,
+                        "bounds_type": 0,
+                        "crop_bottom": 0,
+                        "crop_left": 0,
+                        "crop_right": 0,
+                        "crop_top": 0,
+                        "group_item_backup": false,
+                        "id": 3,
+                        "locked": false,
+                        "name": "Microphone - FIFINE",
+                        "pos": {"x": 0.0, "y": 0.0},
+                        "private_settings": {},
+                        "rot": 0.0,
+                        "scale": {"x": 1.0, "y": 1.0},
+                        "scale_filter": "disable",
+                        "show_transition": {"duration": 0},
+                        "hide_transition": {"duration": 0},
+                        "visible": true
+                    }
+                ]
+            },
+            "versioned_id": "scene"
         },
         {
-            "name": "Camera Only",
-            "items": [
-                {
-                    "name": "Camera - Sony ZV-E10",
-                    "visible": true,
-                    "position": {"x": 0, "y": 0},
-                    "bounds": {"x": 1920, "y": 1080},
-                    "bounds_type": "OBS_BOUNDS_SCALE_INNER"
-                }
-            ]
-        },
-        {
+            "custom_size": false,
+            "hotkeys": {},
+            "id": "scene",
+            "id_counter": 2,
             "name": "Screen Only",
-            "items": [
-                {
-                    "name": "Display Capture",
-                    "visible": true,
-                    "position": {"x": 0, "y": 0},
-                    "bounds": {"x": 1920, "y": 1080},
-                    "bounds_type": "OBS_BOUNDS_SCALE_INNER"
-                }
-            ]
+            "private_settings": {},
+            "settings": {
+                "custom_size": false,
+                "items": [
+                    {
+                        "align": 5,
+                        "bounds": {"x": 1920.0, "y": 1080.0},
+                        "bounds_align": 0,
+                        "bounds_type": 2,
+                        "crop_bottom": 0,
+                        "crop_left": 0,
+                        "crop_right": 0,
+                        "crop_top": 0,
+                        "group_item_backup": false,
+                        "id": 1,
+                        "locked": false,
+                        "name": "Display Capture",
+                        "pos": {"x": 0.0, "y": 0.0},
+                        "private_settings": {},
+                        "rot": 0.0,
+                        "scale": {"x": 1.0, "y": 1.0},
+                        "scale_filter": "disable",
+                        "show_transition": {"duration": 0},
+                        "hide_transition": {"duration": 0},
+                        "visible": true
+                    }
+                ]
+            },
+            "versioned_id": "scene"
+        },
+        {
+            "custom_size": false,
+            "hotkeys": {},
+            "id": "scene",
+            "id_counter": 2,
+            "name": "Camera Only",
+            "private_settings": {},
+            "settings": {
+                "custom_size": false,
+                "items": [
+                    {
+                        "align": 5,
+                        "bounds": {"x": 1920.0, "y": 1080.0},
+                        "bounds_align": 0,
+                        "bounds_type": 2,
+                        "crop_bottom": 0,
+                        "crop_left": 0,
+                        "crop_right": 0,
+                        "crop_top": 0,
+                        "group_item_backup": false,
+                        "id": 1,
+                        "locked": false,
+                        "name": "Camera - Sony ZV-E10",
+                        "pos": {"x": 0.0, "y": 0.0},
+                        "private_settings": {},
+                        "rot": 0.0,
+                        "scale": {"x": 1.0, "y": 1.0},
+                        "scale_filter": "disable",
+                        "show_transition": {"duration": 0},
+                        "hide_transition": {"duration": 0},
+                        "visible": true
+                    }
+                ]
+            },
+            "versioned_id": "scene"
         }
     ],
-    "audio_mixers": {
-        "track1": ["Microphone - FIFINE"],
-        "track2": [],
-        "track3": [],
-        "track4": [],
-        "track5": [],
-        "track6": []
-    }
+    "transitions": []
 }
