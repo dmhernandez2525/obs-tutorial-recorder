@@ -131,8 +131,8 @@ class TranscriptionManager {
     // MARK: - Whisper Status
 
     func checkWhisperStatus() -> WhisperStatus {
-        // Check if whisper-cpp is installed
-        let whisperCheck = runShellCommand("which whisper-cpp 2>/dev/null || which /opt/homebrew/bin/whisper-cpp 2>/dev/null", timeout: 5)
+        // Check if whisper-cli is installed (Homebrew package is whisper-cpp but binary is whisper-cli)
+        let whisperCheck = runShellCommand("which whisper-cli 2>/dev/null || which /opt/homebrew/bin/whisper-cli 2>/dev/null", timeout: 5)
         guard whisperCheck.success && !whisperCheck.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .notInstalled
         }
@@ -148,12 +148,10 @@ class TranscriptionManager {
     }
 
     func getWhisperPath() -> String? {
-        // Try common locations
+        // Try common locations - binary is whisper-cli, not whisper-cpp
         let paths = [
-            "/opt/homebrew/bin/whisper-cpp",
-            "/usr/local/bin/whisper-cpp",
-            "/opt/homebrew/bin/whisper",
-            "/usr/local/bin/whisper"
+            "/opt/homebrew/bin/whisper-cli",
+            "/usr/local/bin/whisper-cli"
         ]
 
         for path in paths {
@@ -163,7 +161,7 @@ class TranscriptionManager {
         }
 
         // Try which command
-        let result = runShellCommand("which whisper-cpp 2>/dev/null", timeout: 5)
+        let result = runShellCommand("which whisper-cli 2>/dev/null", timeout: 5)
         if result.success && !result.output.isEmpty {
             return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -203,8 +201,8 @@ class TranscriptionManager {
         }
 
         guard let whisperPath = getWhisperPath() else {
-            logError("whisper-cpp not found")
-            status = .error("whisper-cpp not installed")
+            logError("whisper-cli not found")
+            status = .error("whisper-cli not installed")
             onStatusChanged?(status)
             completion?(false, nil)
             return
@@ -236,9 +234,27 @@ class TranscriptionManager {
         onProgress?("Transcribing audio...")
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            // Build whisper command
-            // whisper-cpp -m model.bin -f audio.aac -otxt -of output_base
-            var command = "\"\(whisperPath)\" -m \"\(modelPath)\" -f \"\(audioPath)\""
+            // Whisper only supports WAV format, convert AAC to WAV first
+            let wavPath = outputDir + "/audio_temp.wav"
+            let ffmpegPath = "/opt/homebrew/bin/ffmpeg"
+
+            // Convert to 16kHz mono WAV (optimal for Whisper)
+            let convertCommand = "\"\(ffmpegPath)\" -i \"\(audioPath)\" -ar 16000 -ac 1 -c:a pcm_s16le \"\(wavPath)\" -y 2>&1"
+            logInfo("Converting audio to WAV: \(convertCommand)")
+            let convertResult = runShellCommand(convertCommand, timeout: 120)
+
+            guard FileManager.default.fileExists(atPath: wavPath) else {
+                logError("Failed to convert audio to WAV: \(convertResult.output)")
+                DispatchQueue.main.async {
+                    self?.status = .error("Audio conversion failed")
+                    self?.onStatusChanged?(self?.status ?? .idle)
+                    completion?(false, nil)
+                }
+                return
+            }
+
+            // Build whisper command using the WAV file
+            var command = "\"\(whisperPath)\" -m \"\(modelPath)\" -f \"\(wavPath)\""
 
             // Add output format flags
             switch config.outputFormat {
@@ -276,6 +292,9 @@ class TranscriptionManager {
                 } else if FileManager.default.fileExists(atPath: srtPath) {
                     transcriptPath = srtPath
                 }
+
+                // Clean up temp WAV file
+                try? FileManager.default.removeItem(atPath: wavPath)
 
                 if let path = transcriptPath {
                     let transcript = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""

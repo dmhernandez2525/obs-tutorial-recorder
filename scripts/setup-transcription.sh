@@ -41,12 +41,11 @@ check_status() {
     echo -e "${CYAN}${BOLD}=== Transcription Status ===${NC}"
     echo ""
 
-    # Check whisper-cpp
-    if command -v whisper-cpp &> /dev/null; then
-        local version=$(whisper-cpp --help 2>&1 | head -1 || echo "installed")
-        log_success "whisper-cpp: installed"
+    # Check whisper-cli (Homebrew package is whisper-cpp but binary is whisper-cli)
+    if command -v whisper-cli &> /dev/null || [[ -f /opt/homebrew/bin/whisper-cli ]]; then
+        log_success "whisper-cli: installed (via whisper-cpp)"
     else
-        log_error "whisper-cpp: not installed"
+        log_error "whisper-cli: not installed"
         echo "         Run: brew install whisper-cpp"
     fi
 
@@ -78,7 +77,8 @@ check_status() {
 # =============================================================================
 
 install_whisper() {
-    if command -v whisper-cpp &> /dev/null; then
+    # Check for whisper-cli (the actual binary name from whisper-cpp package)
+    if command -v whisper-cli &> /dev/null || [[ -f /opt/homebrew/bin/whisper-cli ]]; then
         log_success "whisper-cpp already installed"
         return 0
     fi
@@ -93,7 +93,7 @@ install_whisper() {
 
     brew install whisper-cpp
 
-    if command -v whisper-cpp &> /dev/null; then
+    if [[ -f /opt/homebrew/bin/whisper-cli ]] || command -v whisper-cli &> /dev/null; then
         log_success "whisper-cpp installed"
     else
         log_error "Failed to install whisper-cpp"
