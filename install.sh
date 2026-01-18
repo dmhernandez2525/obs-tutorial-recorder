@@ -114,62 +114,31 @@ install_obs() {
 # =============================================================================
 
 install_source_record() {
-    log_step "Installing Source Record Plugin"
+    log_step "Source Record Plugin (Optional)"
 
     local plugin_dir="$OBS_PLUGINS_DIR/source-record.plugin"
 
     # Create plugins directory if needed
     mkdir -p "$OBS_PLUGINS_DIR"
 
-    if [[ -d "$plugin_dir" ]]; then
+    if [[ -d "$plugin_dir" ]] || [[ -d "$OBS_PLUGINS_DIR/obs-source-record" ]]; then
         log_success "Source Record plugin already installed"
         return 0
     fi
 
-    log_info "Downloading Source Record v${SOURCE_RECORD_VERSION}..."
-
-    local temp_dir=$(mktemp -d)
-    local zip_file="$temp_dir/source-record.zip"
-
-    # Download the plugin
-    if curl -fsSL -o "$zip_file" "$SOURCE_RECORD_URL" 2>/dev/null; then
-        log_success "Downloaded Source Record plugin"
-    else
-        log_warning "Could not download from GitHub, trying OBS forum..."
-        # Fallback: direct user to manual download
-        log_warning "Please download Source Record manually from:"
-        echo "  https://obsproject.com/forum/resources/source-record.1285/"
-        echo ""
-        echo "Then extract and copy source-record.plugin to:"
-        echo "  $OBS_PLUGINS_DIR/"
-        rm -rf "$temp_dir"
-        return 1
-    fi
-
-    # Extract the plugin
-    log_info "Extracting plugin..."
-    unzip -q "$zip_file" -d "$temp_dir"
-
-    # Find and copy the .plugin bundle
-    local plugin_bundle=$(find "$temp_dir" -name "*.plugin" -type d | head -1)
-
-    if [[ -n "$plugin_bundle" ]]; then
-        cp -R "$plugin_bundle" "$OBS_PLUGINS_DIR/"
-        log_success "Source Record plugin installed to $OBS_PLUGINS_DIR"
-    else
-        # Try alternate structure (some releases have different layouts)
-        if [[ -d "$temp_dir/obs-plugins" ]]; then
-            cp -R "$temp_dir/obs-plugins/"* "$OBS_PLUGINS_DIR/" 2>/dev/null || true
-        fi
-        if [[ -d "$temp_dir/data" ]]; then
-            mkdir -p "$HOME/Library/Application Support/obs-studio/data"
-            cp -R "$temp_dir/data/"* "$HOME/Library/Application Support/obs-studio/data/" 2>/dev/null || true
-        fi
-        log_success "Source Record plugin files installed"
-    fi
-
-    # Cleanup
-    rm -rf "$temp_dir"
+    # Source Record binaries are only available from OBS forum (not GitHub)
+    log_info "Source Record plugin enables ISO recordings (separate file per source)"
+    log_info ""
+    log_info "To install (optional but recommended):"
+    echo ""
+    echo "  1. Download from: ${CYAN}https://obsproject.com/forum/resources/source-record.1285/${NC}"
+    echo "  2. Extract the zip file"
+    echo "  3. Copy the .plugin file to:"
+    echo "     ${CYAN}$OBS_PLUGINS_DIR/${NC}"
+    echo ""
+    log_info "The recorder will work without it (single combined recording)"
+    log_info "With it, each source records to a separate file for editing flexibility"
+    echo ""
 }
 
 # =============================================================================
@@ -186,22 +155,105 @@ make_scripts_executable() {
 }
 
 # =============================================================================
-# Create Desktop Apps
+# Build Menubar App
 # =============================================================================
 
-create_app() {
-    local app_name="$1"
-    local script_path="$2"
+build_menubar_app() {
+    log_step "Building Menubar App"
+
+    local app_name="Tutorial Recorder"
     local app_path="$HOME/Desktop/${app_name}.app"
+    local source_dir="$SCRIPT_DIR/TutorialRecorder"
+    local build_dir="$source_dir/build"
 
-    log_info "Creating: $app_name.app"
+    # Check for Swift compiler
+    if ! command -v swiftc &> /dev/null; then
+        log_warning "Swift compiler not found. Installing Xcode Command Line Tools..."
+        xcode-select --install 2>/dev/null || true
+        log_warning "Please run install.sh again after Xcode tools are installed."
+        return 1
+    fi
 
+    log_info "Compiling Swift menubar app..."
+
+    # Clean previous build
+    rm -rf "$build_dir"
     rm -rf "$app_path"
+    mkdir -p "$build_dir"
+
+    # Compile Swift
+    if swiftc -o "$build_dir/TutorialRecorder" \
+        -O \
+        -target arm64-apple-macosx12.0 \
+        -sdk $(xcrun --show-sdk-path) \
+        -framework Cocoa \
+        "$source_dir/main.swift" 2>/dev/null; then
+        log_success "Compiled successfully"
+    else
+        log_error "Swift compilation failed"
+        log_info "Falling back to shell script apps..."
+        create_fallback_apps
+        return 0
+    fi
+
+    log_info "Creating app bundle..."
+
+    # Create app bundle structure
     mkdir -p "$app_path/Contents/MacOS"
     mkdir -p "$app_path/Contents/Resources"
 
-    # Info.plist
-    cat > "$app_path/Contents/Info.plist" << EOF
+    # Copy executable
+    cp "$build_dir/TutorialRecorder" "$app_path/Contents/MacOS/"
+
+    # Create Info.plist
+    cat > "$app_path/Contents/Info.plist" << 'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>TutorialRecorder</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.tutorial-recorder.menubar</string>
+    <key>CFBundleName</key>
+    <string>Tutorial Recorder</string>
+    <key>CFBundleDisplayName</key>
+    <string>Tutorial Recorder</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.video</string>
+</dict>
+</plist>
+PLIST
+
+    log_success "Created: ~/Desktop/$app_name.app"
+
+    # Remove old apps if they exist
+    rm -rf "$HOME/Desktop/Start Tutorial.app" 2>/dev/null
+    rm -rf "$HOME/Desktop/Stop Tutorial.app" 2>/dev/null
+    rm -rf "$HOME/Desktop/Toggle Recording.app" 2>/dev/null
+}
+
+create_fallback_apps() {
+    # Fallback: create simple shell script apps
+    log_info "Creating fallback shell script apps..."
+
+    local app_path="$HOME/Desktop/Start Tutorial.app"
+    rm -rf "$app_path"
+    mkdir -p "$app_path/Contents/MacOS"
+
+    cat > "$app_path/Contents/Info.plist" << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -209,38 +261,56 @@ create_app() {
     <key>CFBundleExecutable</key>
     <string>launcher</string>
     <key>CFBundleIdentifier</key>
-    <string>com.tutorial-recorder.${app_name// /-}</string>
+    <string>com.tutorial-recorder.start</string>
     <key>CFBundleName</key>
-    <string>${app_name}</string>
+    <string>Start Tutorial</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
-    <key>CFBundleVersion</key>
-    <string>1.0</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
 </dict>
 </plist>
 EOF
 
-    # Launcher script
     cat > "$app_path/Contents/MacOS/launcher" << EOF
 #!/bin/zsh
 osascript -e 'tell application "Terminal"
     activate
-    do script "$script_path"
+    do script "$SCRIPTS_DIR/start-tutorial.sh"
 end tell'
 EOF
-
     chmod +x "$app_path/Contents/MacOS/launcher"
-    log_success "Created: ~/Desktop/$app_name.app"
-}
+    log_success "Created: ~/Desktop/Start Tutorial.app"
 
-create_desktop_apps() {
-    log_step "Creating Desktop Apps"
+    # Stop app
+    app_path="$HOME/Desktop/Stop Tutorial.app"
+    rm -rf "$app_path"
+    mkdir -p "$app_path/Contents/MacOS"
 
-    create_app "Start Tutorial" "$SCRIPTS_DIR/start-tutorial.sh"
-    create_app "Stop Tutorial" "$SCRIPTS_DIR/stop-tutorial.sh"
-    create_app "Toggle Recording" "$SCRIPTS_DIR/toggle-recording.sh"
+    cat > "$app_path/Contents/Info.plist" << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>launcher</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.tutorial-recorder.stop</string>
+    <key>CFBundleName</key>
+    <string>Stop Tutorial</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+</dict>
+</plist>
+EOF
+
+    cat > "$app_path/Contents/MacOS/launcher" << EOF
+#!/bin/zsh
+osascript -e 'tell application "Terminal"
+    activate
+    do script "$SCRIPTS_DIR/stop-tutorial.sh"
+end tell'
+EOF
+    chmod +x "$app_path/Contents/MacOS/launcher"
+    log_success "Created: ~/Desktop/Stop Tutorial.app"
 }
 
 # =============================================================================
@@ -269,10 +339,9 @@ print_instructions() {
     echo "    - OBS Studio"
     echo "    - Source Record plugin (ISO recordings)"
     echo ""
-    echo "  ${GREEN}Desktop Apps:${NC}"
-    echo "    - Start Tutorial.app"
-    echo "    - Stop Tutorial.app"
-    echo "    - Toggle Recording.app"
+    echo "  ${GREEN}Menubar App:${NC}"
+    echo "    - Tutorial Recorder.app (on Desktop)"
+    echo "    - Adds icon to menu bar for quick control"
     echo ""
     echo "  ${GREEN}Folders:${NC}"
     echo "    - ~/Desktop/Tutorial Recordings/"
@@ -309,7 +378,13 @@ print_instructions() {
     echo "     - Accessibility: Terminal"
     echo ""
     echo "${BOLD}${GREEN}Ready to use!${NC}"
-    echo "  Double-click 'Start Tutorial.app' on your Desktop to begin."
+    echo ""
+    echo "  1. Double-click 'Tutorial Recorder.app' on Desktop to launch"
+    echo "  2. Look for the video icon in your menu bar"
+    echo "  3. Click it to start/stop recordings"
+    echo ""
+    echo "  ${CYAN}Tip:${NC} Add to Login Items for auto-start:"
+    echo "       System Settings > General > Login Items > Add 'Tutorial Recorder'"
     echo ""
 }
 
@@ -329,7 +404,7 @@ main() {
     install_obs
     install_source_record
     make_scripts_executable
-    create_desktop_apps
+    build_menubar_app
     create_folders
     print_instructions
 }
