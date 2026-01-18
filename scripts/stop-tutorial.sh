@@ -2,26 +2,30 @@
 # =============================================================================
 # Stop Tutorial Recording
 # =============================================================================
+# Stops OBS recording and collects all ISO recordings from Source Record
+# =============================================================================
 
 set -e
 
 OBS_WEBSOCKET_PORT=4455
 SESSION_FILE="/tmp/obs-tutorial-session.txt"
+SESSION_START_FILE="/tmp/obs-tutorial-start-time.txt"
 
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 log_info() { echo "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo "${GREEN}[SUCCESS]${NC} $1"; }
+log_success() { echo "${GREEN}[OK]${NC} $1"; }
 log_warning() { echo "${YELLOW}[WARNING]${NC} $1"; }
 log_error() { echo "${RED}[ERROR]${NC} $1"; }
 
 # =============================================================================
-# OBS WebSocket (with proper handshake)
+# OBS WebSocket
 # =============================================================================
 
 obs_ws_send() {
@@ -36,7 +40,6 @@ obs_ws_send() {
         request_msg='{"op":6,"d":{"requestType":"'"$request_type"'","requestId":"'"$request_id"'"}}'
     fi
 
-    # Use grep to get the response (op:7) rather than events (op:5)
     {
         sleep 0.3
         echo '{"op":1,"d":{"rpcVersion":1}}'
@@ -54,7 +57,6 @@ get_session_dir() {
     if [[ -f "$SESSION_FILE" ]]; then
         cat "$SESSION_FILE"
     else
-        # Try to find most recent recording folder
         local latest=$(find "$HOME/Desktop/Tutorial Recordings" -maxdepth 1 -type d -name "20*" 2>/dev/null | sort -r | head -1)
         if [[ -n "$latest" ]]; then
             echo "$latest"
@@ -65,54 +67,100 @@ get_session_dir() {
     fi
 }
 
-wait_for_recording_file() {
-    local raw_dir="$1"
-    local max_wait=30
+get_session_start_time() {
+    if [[ -f "$SESSION_START_FILE" ]]; then
+        cat "$SESSION_START_FILE"
+    else
+        # Default: 30 minutes ago
+        echo $(($(date +%s) - 1800))
+    fi
+}
+
+wait_for_file_complete() {
+    local file="$1"
+    local max_wait=15
     local waited=0
 
     while [[ $waited -lt $max_wait ]]; do
-        # Find most recent video file (MKV or MOV)
-        local latest_file=$(find "$raw_dir" -type f \( -name "*.mkv" -o -name "*.mov" -o -name "*.mp4" \) 2>/dev/null | xargs ls -t 2>/dev/null | head -1)
-
-        if [[ -n "$latest_file" ]]; then
-            local size1=$(stat -f%z "$latest_file" 2>/dev/null || echo "0")
-            sleep 2
-            local size2=$(stat -f%z "$latest_file" 2>/dev/null || echo "0")
-
-            if [[ "$size1" == "$size2" && "$size1" != "0" ]]; then
-                echo "$latest_file"
-                return 0
-            fi
-        fi
+        local size1=$(stat -f%z "$file" 2>/dev/null || echo "0")
         sleep 1
+        local size2=$(stat -f%z "$file" 2>/dev/null || echo "0")
+
+        if [[ "$size1" == "$size2" && "$size1" != "0" ]]; then
+            return 0
+        fi
         ((waited++))
     done
     return 1
 }
 
+collect_source_recordings() {
+    local raw_dir="$1"
+    local start_time="$2"
+    local collected=0
+
+    log_info "Collecting ISO recordings from Source Record..."
+
+    # Wait for files to finish writing
+    sleep 3
+
+    # Find all video files in Movies created after session start
+    # Source Record uses ~/Movies by default
+    local search_dirs=("$HOME/Movies" "$raw_dir")
+
+    for search_dir in "${search_dirs[@]}"; do
+        [[ ! -d "$search_dir" ]] && continue
+
+        # Find recent video files (modified after session start)
+        while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+
+            local file_mtime=$(stat -f%m "$file" 2>/dev/null || echo "0")
+
+            # Only process files created after our session started
+            if [[ "$file_mtime" -ge "$start_time" ]]; then
+                # Wait for file to finish writing
+                if wait_for_file_complete "$file"; then
+                    local filename=$(basename "$file")
+                    local dest="$raw_dir/$filename"
+
+                    # Move if not already in raw_dir
+                    if [[ "$file" != "$dest" && ! -f "$dest" ]]; then
+                        mv "$file" "$dest"
+                        log_success "Collected: $filename"
+                        ((collected++))
+                    elif [[ "$file" == "$dest" ]]; then
+                        log_success "Found: $filename"
+                        ((collected++))
+                    fi
+                fi
+            fi
+        done < <(find "$search_dir" -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mov" -o -name "*.mp4" \) 2>/dev/null)
+    done
+
+    echo "$collected"
+}
+
 remux_to_mp4() {
     local input_file="$1"
     local ext="${input_file##*.}"
-    local mp4_file="${input_file%.*}.mp4"
 
-    if [[ "$ext" == "mp4" ]]; then
-        echo "$input_file"
-        return 0
-    fi
+    [[ "$ext" == "mp4" ]] && { echo "$input_file"; return 0; }
 
     if ! command -v ffmpeg &> /dev/null; then
-        log_warning "ffmpeg not installed. Skipping remux."
         echo "$input_file"
         return 0
     fi
 
-    log_info "Remuxing to MP4..."
-    ffmpeg -i "$input_file" -c copy -y "$mp4_file" 2>/dev/null && {
+    local mp4_file="${input_file%.*}.mp4"
+    log_info "Remuxing: $(basename "$input_file")..."
+
+    if ffmpeg -i "$input_file" -c copy -y "$mp4_file" 2>/dev/null; then
         log_success "Created: $(basename "$mp4_file")"
         echo "$mp4_file"
-    } || {
+    else
         echo "$input_file"
-    }
+    fi
 }
 
 get_video_duration() {
@@ -126,26 +174,42 @@ get_video_duration() {
 
 update_metadata() {
     local project_dir="$1"
-    local recording_file="$2"
     local metadata_file="$project_dir/metadata.json"
 
     [[ ! -f "$metadata_file" ]] && return
 
-    local filename=$(basename "$recording_file")
+    local raw_dir="$project_dir/raw"
     local timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    local duration=$(get_video_duration "$recording_file")
+
+    # Build list of all recordings
+    local recordings_json="["
+    local first=true
+
+    for file in "$raw_dir"/*.{mp4,mov,mkv} 2>/dev/null; do
+        [[ ! -f "$file" ]] && continue
+
+        local filename=$(basename "$file")
+        local duration=$(get_video_duration "$file")
+        local size=$(du -h "$file" | cut -f1)
+
+        if [[ "$first" == "true" ]]; then
+            first=false
+        else
+            recordings_json+=","
+        fi
+
+        recordings_json+="{\"filename\":\"$filename\",\"duration\":\"${duration}s\",\"size\":\"$size\"}"
+    done
+
+    recordings_json+="]"
 
     python3 << EOF
 import json
 try:
     with open("$metadata_file", 'r') as f:
         data = json.load(f)
-    data['recordings'].append({
-        "filename": "$filename",
-        "startTime": "$timestamp",
-        "duration": "$duration seconds",
-        "notes": ""
-    })
+    data['recordings'] = $recordings_json
+    data['lastUpdated'] = "$timestamp"
     with open("$metadata_file", 'w') as f:
         json.dump(data, f, indent=2)
 except Exception as e:
@@ -154,7 +218,7 @@ EOF
 }
 
 # =============================================================================
-# Main Script
+# Main
 # =============================================================================
 
 main() {
@@ -164,65 +228,82 @@ main() {
     echo "${GREEN}╚════════════════════════════════════════╝${NC}"
     echo ""
 
-    # Get session directory
+    # Get session info
     PROJECT_DIR=$(get_session_dir)
     RAW_DIR="$PROJECT_DIR/raw"
+    SESSION_START=$(get_session_start_time)
+
     log_info "Project: $(basename "$PROJECT_DIR")"
 
-    # Stop recording via WebSocket
+    # Ensure raw directory exists
+    mkdir -p "$RAW_DIR"
+
+    # Stop main recording via WebSocket
     log_info "Stopping OBS recording..."
     local result=$(obs_ws_send "StopRecord")
 
     if echo "$result" | grep -q '"result":true'; then
-        log_success "Recording stopped"
-        # Extract output path from response
-        local output_path=$(echo "$result" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('d',{}).get('responseData',{}).get('outputPath',''))" 2>/dev/null)
-        if [[ -n "$output_path" ]]; then
-            log_info "Saved to: $output_path"
-        fi
+        log_success "Main recording stopped"
     else
         log_warning "Could not stop via WebSocket. Please stop manually in OBS."
         osascript -e 'display dialog "Click Stop Recording in OBS, then click OK." buttons {"OK"} default button "OK"' 2>/dev/null || true
     fi
 
-    # Wait for file
-    log_info "Waiting for recording file..."
-    sleep 2
+    # Give Source Record filters time to finish
+    log_info "Waiting for all recordings to complete..."
+    sleep 5
 
-    # Check for files in raw dir or default OBS location
-    RECORDING_FILE=$(wait_for_recording_file "$RAW_DIR")
-    if [[ -z "$RECORDING_FILE" ]]; then
-        # Check Movies folder (OBS default)
-        local movies_file=$(find "$HOME/Movies" -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mov" \) -mmin -5 2>/dev/null | head -1)
-        if [[ -n "$movies_file" ]]; then
-            log_info "Found recording in Movies folder, moving to project..."
-            mv "$movies_file" "$RAW_DIR/"
-            RECORDING_FILE="$RAW_DIR/$(basename "$movies_file")"
+    # Collect all ISO recordings from Source Record
+    local file_count=$(collect_source_recordings "$RAW_DIR" "$SESSION_START")
+
+    echo ""
+    if [[ "$file_count" -gt 0 ]]; then
+        log_success "Collected $file_count recording(s)"
+
+        # List all files
+        echo ""
+        echo "${CYAN}Recordings:${NC}"
+        for file in "$RAW_DIR"/*.{mp4,mov,mkv} 2>/dev/null; do
+            [[ ! -f "$file" ]] && continue
+            local size=$(du -h "$file" | cut -f1)
+            echo "  - $(basename "$file") ($size)"
+        done
+        echo ""
+
+        # Ask about remuxing
+        local non_mp4_count=$(find "$RAW_DIR" -name "*.mkv" -o -name "*.mov" 2>/dev/null | wc -l | tr -d ' ')
+
+        if [[ "$non_mp4_count" -gt 0 ]]; then
+            log_info "Found $non_mp4_count non-MP4 file(s)"
+            echo -n "Remux to MP4? (y/n) [y]: "
+            read -r do_remux
+            do_remux=${do_remux:-y}
+
+            if [[ "$do_remux" =~ ^[Yy] ]]; then
+                for file in "$RAW_DIR"/*.{mkv,mov} 2>/dev/null; do
+                    [[ ! -f "$file" ]] && continue
+                    remux_to_mp4 "$file"
+                done
+            fi
         fi
-    fi
-
-    if [[ -n "$RECORDING_FILE" ]]; then
-        log_success "Recording: $(basename "$RECORDING_FILE")"
-        log_info "Size: $(du -h "$RECORDING_FILE" | cut -f1)"
-
-        # Remux if needed
-        FINAL_FILE=$(remux_to_mp4 "$RECORDING_FILE")
 
         # Update metadata
-        update_metadata "$PROJECT_DIR" "$FINAL_FILE"
+        update_metadata "$PROJECT_DIR"
         log_success "Metadata updated"
     else
-        log_warning "Recording file not found in project folder"
+        log_warning "No recordings found"
     fi
 
-    # Cleanup
-    rm -f "$SESSION_FILE" /tmp/obs-recording-active.txt
+    # Cleanup session files
+    rm -f "$SESSION_FILE" "$SESSION_START_FILE" /tmp/obs-recording-active.txt
 
-    # Show notification
+    # Notification
     osascript -e 'display notification "Recording complete!" with title "Tutorial Recording" sound name "Glass"' 2>/dev/null &
 
     echo ""
     log_success "Done!"
+    echo ""
+    echo "Project folder: ${CYAN}$PROJECT_DIR${NC}"
     echo ""
 
     # Open project folder

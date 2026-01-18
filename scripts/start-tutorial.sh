@@ -198,6 +198,7 @@ main() {
 
     # Save session info
     echo "$PROJECT_DIR" > /tmp/obs-tutorial-session.txt
+    date +%s > /tmp/obs-tutorial-start-time.txt
     touch /tmp/obs-recording-active.txt
 
     # Step 2: Launch OBS if needed
