@@ -26,6 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Setup status bar
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem.autosaveName = "TutorialRecorderStatusItem"  // Allows Cmd+drag repositioning
         updateStatusIcon()
         setupMenu()
 
