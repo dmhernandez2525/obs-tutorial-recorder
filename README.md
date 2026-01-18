@@ -74,25 +74,41 @@ In **System Settings > Privacy & Security**, enable:
 - Accessibility: Terminal
 
 ### 4. Start Recording
-Double-click **Start Tutorial.app** on your Desktop!
+Double-click **Tutorial Recorder.app** on your Desktop - a video icon appears in your menubar!
 
 ## Usage
 
-### Starting a Recording
+### Using the Menubar App
 
-1. Double-click **Start Tutorial.app** on Desktop
-2. Select existing project OR create new one
-3. OBS launches and connects via WebSocket
-4. Recording starts after 5-second countdown
+1. Double-click **Tutorial Recorder.app** on Desktop (or from Applications)
+2. A video camera icon appears in your menu bar
+3. Click the icon to access controls:
+   - **Start Recording...** - Enter project name and begin
+   - **Stop Recording** - Stop and collect all files
+   - **Open Project Folder** - View current/recent recordings
+   - **Open OBS** - Launch OBS Studio
+   - **Open Recordings Folder** - Browse all projects
 
-### Stopping a Recording
+### Recording Workflow
 
-1. Double-click **Stop Tutorial.app** on Desktop
-2. Main recording stops
-3. All ISO recordings are collected from ~/Movies
-4. Files are moved to your project's `raw/` folder
-5. Option to remux to MP4
-6. Project folder opens in Finder
+**Starting:**
+1. Click the menubar icon
+2. Select "Start Recording..."
+3. Enter a project name
+4. OBS launches (if not running) and recording begins
+5. Icon turns red to indicate recording
+
+**Stopping:**
+1. Click the red menubar icon
+2. Select "Stop Recording"
+3. All ISO files are collected to your project folder
+4. Project folder opens automatically
+
+### Auto-Start on Login
+
+To have Tutorial Recorder start automatically:
+1. Open **System Settings > General > Login Items**
+2. Click **+** and add **Tutorial Recorder.app**
 
 ### Command Line Usage
 
