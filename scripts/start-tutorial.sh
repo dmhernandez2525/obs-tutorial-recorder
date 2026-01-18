@@ -57,15 +57,16 @@ obs_ws_check() {
 }
 
 obs_ws_wait() {
-    local max_attempts=20
+    local max_attempts=${1:-40}  # Default 40 seconds
     local attempt=0
     while [[ $attempt -lt $max_attempts ]]; do
         if obs_ws_check; then
+            echo ""
             return 0
         fi
         sleep 1
         ((attempt++))
-        echo -ne "\r${BLUE}[INFO]${NC} Waiting for OBS WebSocket... ($attempt/$max_attempts)"
+        echo -ne "\r${BLUE}[INFO]${NC} Waiting for OBS WebSocket... ($attempt/$max_attempts)   "
     done
     echo ""
     return 1
@@ -199,12 +200,14 @@ main() {
 
     # Step 2: Launch OBS if needed
     log_info "Checking OBS..."
-    if ! pgrep -x "OBS" > /dev/null 2>&1; then
-        log_info "Launching OBS..."
-        open -a "OBS"
-        sleep 3
-    else
+    local obs_was_running=false
+    if pgrep -x "OBS" > /dev/null 2>&1; then
+        obs_was_running=true
         log_success "OBS is already running"
+    else
+        log_info "Launching OBS (this may take a moment)..."
+        open -a "OBS"
+        sleep 5  # Give OBS time to start
     fi
 
     # Step 3: Connect via WebSocket
@@ -214,9 +217,19 @@ main() {
     fi
 
     log_info "Connecting to OBS WebSocket..."
-    if ! obs_ws_wait; then
-        log_error "Could not connect to OBS WebSocket"
-        log_info "Enable it in OBS: Tools > WebSocket Server Settings"
+    local ws_timeout=40
+    if [[ "$obs_was_running" == "false" ]]; then
+        ws_timeout=60  # More time if we just launched OBS
+    fi
+
+    if ! obs_ws_wait $ws_timeout; then
+        log_error "Could not connect to OBS WebSocket after ${ws_timeout}s"
+        log_info ""
+        log_info "Please check:"
+        log_info "  1. OBS is running"
+        log_info "  2. Tools > WebSocket Server Settings > Enable WebSocket server"
+        log_info "  3. Port is 4455, Authentication is OFF"
+        log_info ""
         open "$PROJECT_DIR"
         exit 1
     fi
