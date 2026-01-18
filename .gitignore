@@ -35,3 +35,4 @@ Tutorial Recordings/
 # Compiled source
 *.pyc
 __pycache__/
+TutorialRecorder/build/
