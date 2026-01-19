@@ -36,3 +36,7 @@ Tutorial Recordings/
 *.pyc
 __pycache__/
 TutorialRecorder/build/
+
+# Website
+website/node_modules/
+website/dist/

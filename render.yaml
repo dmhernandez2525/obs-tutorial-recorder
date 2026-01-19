@@ -1,0 +1,32 @@
+# OBS Tutorial Recorder - Render Infrastructure Configuration
+# ===========================================================
+# Static website deployment for the landing page.
+#
+# NOTE: The actual application runs locally on macOS.
+# This deployment is for the informational landing page only.
+#
+# Cost: $0/month (free tier)
+
+services:
+  - type: web
+    name: obs-tutorial-recorder
+    env: static
+    buildCommand: cd website && npm install && npm run build
+    staticPublishPath: ./website/dist
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
