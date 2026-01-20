@@ -9,7 +9,7 @@
 
 services:
   - type: web
-    name: obs-tutorial-recorder
+    name: obs-tutorial-site
     env: static
     buildCommand: cd website && npm install && npm run build
     staticPublishPath: ./website/dist
