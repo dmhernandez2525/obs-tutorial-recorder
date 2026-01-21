@@ -279,6 +279,14 @@ class RecordingManager {
                 } else {
                     logSuccess("Already on correct profile: \(targetProfile)")
                 }
+
+                // Ensure profile is configured with correct sources
+                self?.onProgress?("Configuring profile sources...")
+                self?.ensureProfileConfigured(targetProfile: targetProfile, setupType: session.setupType)
+                Thread.sleep(forTimeInterval: 2.0)
+
+                // Verify what sources are in the current scene
+                self?.verifySceneSources()
             }
 
             // Set record directory
@@ -572,6 +580,209 @@ class RecordingManager {
     }
 
     // MARK: - Helper Methods
+
+    private func ensureProfileConfigured(targetProfile: String, setupType: SetupType) {
+        logInfo("===============================================")
+        logInfo("ENSURING PROFILE '\(targetProfile)' IS CONFIGURED")
+        logInfo("===============================================")
+
+        // Load saved configuration from disk
+        let configPath = Paths.configDir + "/profile-configs.json"
+        var savedConfig: ProfileConfiguration?
+
+        if FileManager.default.fileExists(atPath: configPath),
+           let data = try? Data(contentsOf: URL(fileURLWithPath: configPath)),
+           let configs = try? JSONDecoder().decode([String: ProfileConfiguration].self, from: data) {
+            savedConfig = configs[targetProfile]
+            if let config = savedConfig {
+                logInfo("Found saved configuration for '\(targetProfile)':")
+                logInfo("  Displays: \(config.displays.joined(separator: ", "))")
+                logInfo("  Cameras: \(config.cameras.joined(separator: ", "))")
+                logInfo("  Audio: \(config.audioInputs.joined(separator: ", "))")
+                logInfo("  Configured: \(config.isConfigured)")
+            } else {
+                logWarning("No saved configuration found for '\(targetProfile)'")
+            }
+        } else {
+            logWarning("No profile configurations file found at: \(configPath)")
+        }
+
+        // If no saved config or not configured, create default config
+        if savedConfig == nil || savedConfig?.isConfigured == false {
+            logWarning("Profile '\(targetProfile)' has no configuration - creating default config")
+            savedConfig = createDefaultConfiguration(for: setupType)
+            logInfo("Created default configuration:")
+            if let config = savedConfig {
+                logInfo("  Displays: \(config.displays.joined(separator: ", "))")
+                logInfo("  Cameras: \(config.cameras.joined(separator: ", "))")
+                logInfo("  Audio: \(config.audioInputs.joined(separator: ", "))")
+            }
+        }
+
+        // Apply configuration to OBS
+        if let config = savedConfig {
+            logInfo("Applying configuration to OBS profile '\(targetProfile)'...")
+            OBSSourceManager.shared.configureProfile(profileName: targetProfile, config: config)
+            logSuccess("Profile '\(targetProfile)' configured successfully")
+        } else {
+            logError("Failed to get or create configuration for '\(targetProfile)'")
+        }
+
+        logInfo("===============================================")
+    }
+
+    private func createDefaultConfiguration(for setupType: SetupType) -> ProfileConfiguration {
+        logInfo("Creating default configuration for: \(setupType.displayName)")
+
+        switch setupType {
+        case .macBookSetup:
+            return ProfileConfiguration(
+                profileName: setupType.obsProfileName,
+                displays: ["Display 1"],
+                cameras: ["FaceTime HD Camera"],
+                audioInputs: ["Built-in Microphone"],
+                isConfigured: true
+            )
+
+        case .macSetup:
+            return ProfileConfiguration(
+                profileName: setupType.obsProfileName,
+                displays: ["Display 1", "Display 2", "Display 3"],
+                cameras: ["External Camera"],
+                audioInputs: ["External Microphone"],
+                isConfigured: true
+            )
+
+        case .pcSetup:
+            return ProfileConfiguration(
+                profileName: setupType.obsProfileName,
+                displays: ["Display 1"],
+                cameras: Array(1...10).map { "Camera \($0)" },
+                audioInputs: ["Microphone"],
+                isConfigured: true
+            )
+        }
+    }
+
+    private func verifySceneSources() {
+        logInfo("=========================================")
+        logInfo("VERIFYING SCENE SOURCES BEFORE RECORDING")
+        logInfo("=========================================")
+
+        // Get current scene
+        let sceneResult = runShellCommand("""
+            {
+                sleep 0.3
+                echo '{"op":1,"d":{"rpcVersion":1}}'
+                sleep 0.3
+                echo '{"op":6,"d":{"requestType":"GetCurrentProgramScene","requestId":"getscene1"}}'
+                sleep 0.5
+            } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+        """, timeout: 10)
+
+        logInfo("GetCurrentProgramScene response: \(String(sceneResult.output.prefix(500)))")
+
+        // Extract scene name
+        let scenePattern = #"\"currentProgramSceneName\":\s*\"([^\"]+)\""#
+        guard let sceneRegex = try? NSRegularExpression(pattern: scenePattern, options: []),
+              let sceneMatch = sceneRegex.firstMatch(in: sceneResult.output, options: [], range: NSRange(location: 0, length: sceneResult.output.utf16.count)),
+              sceneMatch.numberOfRanges > 1,
+              let sceneRange = Range(sceneMatch.range(at: 1), in: sceneResult.output) else {
+            logWarning("Could not extract scene name from response")
+            return
+        }
+
+        let sceneName = String(sceneResult.output[sceneRange])
+        logInfo("Current scene: \(sceneName)")
+
+        // Get scene items
+        let itemsResult = runShellCommand("""
+            {
+                sleep 0.3
+                echo '{"op":1,"d":{"rpcVersion":1}}'
+                sleep 0.3
+                echo '{"op":6,"d":{"requestType":"GetSceneItemList","requestId":"itemlist1","requestData":{"sceneName":"\(sceneName)"}}}'
+                sleep 0.5
+            } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+        """, timeout: 10)
+
+        logInfo("GetSceneItemList response: \(String(itemsResult.output.prefix(1000)))")
+
+        // Extract source names
+        let sourcePattern = #"\"sourceName\":\s*\"([^\"]+)\""#
+        guard let sourceRegex = try? NSRegularExpression(pattern: sourcePattern, options: []) else {
+            logWarning("Could not create source name regex")
+            return
+        }
+
+        let sourceMatches = sourceRegex.matches(in: itemsResult.output, options: [], range: NSRange(location: 0, length: itemsResult.output.utf16.count))
+        let sources = sourceMatches.compactMap { match -> String? in
+            guard match.numberOfRanges > 1,
+                  let range = Range(match.range(at: 1), in: itemsResult.output) else {
+                return nil
+            }
+            return String(itemsResult.output[range])
+        }
+
+        if sources.isEmpty {
+            logWarning("⚠️  NO SOURCES FOUND IN SCENE '\(sceneName)'!")
+            logWarning("⚠️  This profile may not be configured correctly.")
+        } else {
+            logInfo("Found \(sources.count) source(s) in scene '\(sceneName)':")
+            for (index, source) in sources.enumerated() {
+                logInfo("  [\(index + 1)] \(source)")
+            }
+        }
+
+        // Check if sources match expected setup
+        if let session = currentSession {
+            logInfo("Expected setup: \(session.setupType.displayName)")
+            logInfo("Expected profile: \(session.setupType.obsProfileName)")
+
+            switch session.setupType {
+            case .macBookSetup:
+                logInfo("Expected sources for MacBook Setup:")
+                logInfo("  - 1 display (e.g., Screen 1)")
+                logInfo("  - FaceTime HD Camera (or similar)")
+                logInfo("  - Built-in Microphone (or similar)")
+
+                let hasMultipleScreens = sources.filter { $0.contains("Screen") }.count > 1
+                let hasExternalCamera = sources.contains { $0.contains("ZV-E") || $0.contains("External") }
+                let hasExternalMic = sources.contains { $0.contains("FIFINE") || ($0.contains("Microphone") && !$0.contains("Built-in")) }
+
+                if hasMultipleScreens {
+                    logError("❌ MISMATCH: Found multiple screens, but MacBook Setup should have only 1!")
+                }
+                if hasExternalCamera {
+                    logError("❌ MISMATCH: Found external camera, but MacBook Setup should use FaceTime camera!")
+                }
+                if hasExternalMic {
+                    logError("❌ MISMATCH: Found external microphone, but MacBook Setup should use built-in!")
+                }
+
+                if hasMultipleScreens || hasExternalCamera || hasExternalMic {
+                    logError("============================================")
+                    logError("SOURCE MISMATCH DETECTED!")
+                    logError("Profile '\(session.setupType.obsProfileName)' has sources from a different setup.")
+                    logError("Please reconfigure this profile via 'Configure Profiles...' (Cmd+P)")
+                    logError("============================================")
+                }
+
+            case .macSetup:
+                logInfo("Expected sources for Mac Multi-Screen Setup:")
+                logInfo("  - Multiple displays (e.g., Screen 1, 2, 3)")
+                logInfo("  - External camera (e.g., ZV-E1)")
+                logInfo("  - External microphone (e.g., FIFINE)")
+
+            case .pcSetup:
+                logInfo("Expected sources for PC Setup:")
+                logInfo("  - 1 display")
+                logInfo("  - Multiple cameras")
+            }
+        }
+
+        logInfo("=========================================")
+    }
 
     private func extractProfileName(from websocketOutput: String) -> String? {
         // Look for "currentProfileName":"SomeProfile" in the GetCurrentProfile response
