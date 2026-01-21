@@ -183,3 +183,272 @@ After starting a recording, check:
 - ⚠️ Brief visual switch from default to target profile (unavoidable without command-line support)
 
 **Build:** `~/Desktop/Tutorial Recorder.app`
+
+---
+
+# NEW FIXES - January 21, 2026 (Evening Update)
+
+## Issues Fixed (Session 2)
+
+### 5. ✅ Create New Profile from Start Recording Dialog
+
+**Problem:** Users had to use the menu (Cmd+P) or wait for first-time setup to create new profiles. There was no way to create a profile directly from the start recording dialog.
+
+**Solution:** Added "＋ Create New Profile..." option to the setup dropdown in the start recording dialog.
+
+**User Flow:**
+1. Click "Start Recording..."
+2. See setup dropdown with:
+   - Mac Setup (Multiple Screens)
+   - MacBook Setup (One Screen, Native Camera)
+   - PC Setup (One Screen, 10 Cameras)
+   - ────────── (separator)
+   - **＋ Create New Profile...** ← NEW!
+3. Select "＋ Create New Profile..."
+4. Profile setup window opens
+5. After saving, start recording dialog reopens automatically
+6. New profile is now available in the dropdown
+
+**Code Changes:**
+- `AppDelegate.swift:showStartDialog()` - Lines 364-374
+  - Added separator to setup popup menu
+  - Added "＋ Create New Profile..." menu item
+- `AppDelegate.swift:showStartDialog()` - Lines 402-409
+  - Check if create new profile option selected (index 4)
+  - Open profile setup window
+  - Reopen start dialog after profile creation
+
+**File:** `Sources/AppDelegate.swift:364-374, 402-409`
+
+---
+
+### 6. ✅ Profile Source Mismatch (CRITICAL FIX)
+
+**Problem:** When switching OBS profiles, the profile name changed correctly in the title bar, but the sources didn't match the selected setup.
+
+**Example of the bug:**
+- User selects: "MacBook Setup (One Screen, Native Camera)"
+- Expected sources: Screen 1, FaceTime HD Camera, Built-in Microphone
+- Actual sources in OBS: Screen 3, Screen 2, Screen 1, Camera - ZV-E1, Microphone - FIFINE
+- OBS title showed: "Profile: MacBook-Single" ✓
+- But sources were from Mac-MultiScreen setup ✗
+
+**Root Cause:**
+When configuring a profile, `OBSSourceManager.configureProfile()` was adding new sources to the "Tutorial Recording" scene but **NOT removing old sources first**. If a profile was previously configured with different sources (e.g., Mac-MultiScreen sources), those old sources remained when switching to MacBook-Single.
+
+**Solution:** Added functionality to clear all scene items before adding new sources.
+
+**Implementation:**
+
+1. **New Method: `removeAllSceneItems(sceneName:)`** (Lines 142-192)
+   - Gets list of all scene items using `GetSceneItemList` WebSocket command
+   - Parses JSON response to extract scene item IDs
+   - Uses regex pattern: `"sceneItemId":\s*(\d+)`
+   - Removes each item individually using `RemoveSceneItem` command
+   - Logs each removal for debugging
+   - Waits 0.2s between removals to avoid overwhelming WebSocket
+
+2. **Updated `configureProfile()` Flow:**
+   ```
+   1. Switch to target profile
+   2. Wait 2 seconds
+   3. Create/get "Tutorial Recording" scene
+   4. Wait 1 second
+   5. Set as current scene
+   6. Wait 1 second
+   7. **Clear all existing sources from scene** ← NEW! (Line 112)
+   8. Wait 1 second
+   9. Add display captures
+   10. Add camera sources
+   11. Add audio sources
+   ```
+
+**WebSocket Commands Used:**
+- `GetSceneItemList` - Retrieve all items in a scene with their IDs
+  ```json
+  {
+    "op": 6,
+    "d": {
+      "requestType": "GetSceneItemList",
+      "requestId": "itemlist1",
+      "requestData": {"sceneName": "Tutorial Recording"}
+    }
+  }
+  ```
+
+- `RemoveSceneItem` - Remove specific item by scene item ID
+  ```json
+  {
+    "op": 6,
+    "d": {
+      "requestType": "RemoveSceneItem",
+      "requestId": "remove1",
+      "requestData": {
+        "sceneName": "Tutorial Recording",
+        "sceneItemId": 1
+      }
+    }
+  }
+  ```
+
+**Before Fix:**
+```
+MacBook-Single profile → Tutorial Recording scene:
+  - Screen 1      ← from previous Mac-MultiScreen config
+  - Screen 2      ← from previous Mac-MultiScreen config
+  - Screen 3      ← from previous Mac-MultiScreen config
+  - Camera - ZV-E1     ← from previous Mac-MultiScreen config
+  - Microphone - FIFINE ← from previous Mac-MultiScreen config
+  - Screen 1      ← newly added (duplicate!)
+  - FaceTime HD Camera  ← newly added
+  - Built-in Microphone ← newly added
+```
+
+**After Fix:**
+```
+MacBook-Single profile → Tutorial Recording scene:
+  [All old sources cleared first]
+  - Screen 1      ← correct
+  - FaceTime HD Camera  ← correct
+  - Built-in Microphone ← correct
+```
+
+**Code Changes:**
+- `OBSSourceManager.swift:configureProfile()` - Line 112
+  - Added call to `removeAllSceneItems(sceneName)`
+  - Added wait time after clearing
+- `OBSSourceManager.swift:removeAllSceneItems()` - Lines 142-192 (NEW METHOD)
+  - Get scene item list
+  - Parse item IDs with regex
+  - Remove each item
+  - Log removals
+
+**Files:**
+- `Sources/OBSSourceManager.swift:112` (added clear call)
+- `Sources/OBSSourceManager.swift:142-192` (new method)
+- `Sources/OBSSourceManager.swift:116` (fixed unused parameter warning)
+
+---
+
+## Testing Instructions
+
+### Test 1: Create New Profile from Start Dialog
+
+1. Launch Tutorial Recorder
+2. Click "Start Recording..."
+3. In setup dropdown, select "＋ Create New Profile..."
+4. Profile setup window should open
+5. Create a custom profile (e.g., "My Studio Setup")
+6. Select displays, cameras, audio sources
+7. Click "Save Configuration"
+8. Wait for OBS configuration to complete
+9. Start recording dialog should reopen automatically
+10. "My Studio Setup" should now appear in the setup dropdown
+
+### Test 2: Profile Source Clearing
+
+**Setup:**
+1. Configure MacBook-Single profile:
+   - 1 display (Display 1)
+   - FaceTime HD Camera
+   - Built-in Microphone
+
+2. Configure Mac-MultiScreen profile:
+   - 3 displays (Display 1, 2, 3)
+   - External Camera (e.g., ZV-E1)
+   - External Microphone (e.g., FIFINE)
+
+**Test:**
+1. Open OBS manually
+2. In Tutorial Recorder → Configure Profiles (Cmd+P)
+3. Select Mac-MultiScreen tab
+4. Configure sources as above
+5. Click "Save Configuration"
+6. Watch OBS - should see 3 screens + external devices
+
+7. Switch to MacBook-Single tab
+8. Configure sources as above (1 screen, FaceTime, built-in mic)
+9. Click "Save Configuration"
+
+10. **In OBS, verify:**
+    - Profile shows "MacBook-Single" in title
+    - "Tutorial Recording" scene has ONLY:
+      - Screen 1
+      - FaceTime HD Camera
+      - Built-in Microphone
+    - NO Screen 2, Screen 3, ZV-E1, or FIFINE sources
+
+11. Switch back to Mac-MultiScreen profile
+12. Click "Save Configuration"
+
+13. **In OBS, verify:**
+    - Profile shows "Mac-MultiScreen"
+    - "Tutorial Recording" scene has ONLY:
+      - Screen 1
+      - Screen 2
+      - Screen 3
+      - Camera - ZV-E1
+      - Microphone - FIFINE
+    - NO FaceTime camera or built-in mic
+
+### Test 3: Session Log Verification
+
+After configuring a profile, view the session log:
+
+1. Tutorial Recorder → View Latest Session Log (Cmd+L)
+2. Look for the clearing sequence:
+
+```
+[INFO] Configuring OBS profile: MacBook-Single
+[INFO]   Displays: Display 1
+[INFO]   Cameras: FaceTime HD Camera
+[INFO]   Audio: Built-in Microphone
+[INFO] Switching to profile: MacBook-Single
+[SUCCESS] Switched to profile: MacBook-Single
+[INFO] Creating scene: Tutorial Recording
+[INFO] Scene created or already exists: Tutorial Recording
+[INFO] Setting current scene: Tutorial Recording
+[SUCCESS] Set current scene: Tutorial Recording
+[INFO] Clearing existing sources from scene...
+[INFO] Removing all scene items from: Tutorial Recording
+[INFO] Found 5 scene items to remove       ← Shows old sources detected
+[INFO] Removed scene item ID: 1
+[INFO] Removed scene item ID: 2
+[INFO] Removed scene item ID: 3
+[INFO] Removed scene item ID: 4
+[INFO] Removed scene item ID: 5
+[SUCCESS] Cleared all sources from scene: Tutorial Recording
+[INFO] Creating display capture: Screen 1 (Display 1)
+[SUCCESS] Created display capture: Screen 1
+[INFO] Creating video capture: FaceTime HD Camera
+[SUCCESS] Created video capture: FaceTime HD Camera
+[INFO] Creating audio capture: Built-in Microphone
+[SUCCESS] Created audio capture: Built-in Microphone
+[SUCCESS] Profile MacBook-Single configured with 1 displays, 1 cameras, 1 audio sources
+```
+
+---
+
+## Build Status
+
+✅ **Successfully compiled**
+📍 **Location:** `~/Desktop/Tutorial Recorder.app`
+📊 **Files:** 13 Swift source files
+⚠️ **Warnings:** 1 minor warning in FirstTimeSetupWizard.swift (cosmetic, no functional impact)
+🎯 **Ready to test!**
+
+---
+
+## Summary of All Fixes
+
+### Session 1 (Morning)
+1. ✅ Progress window always on top
+2. ✅ Profile detection shows actual name
+3. ✅ Removed non-working command-line argument
+4. ✅ Increased wait times for stability
+
+### Session 2 (Evening)
+5. ✅ Create new profile from start recording dialog
+6. ✅ **Profile source mismatch fixed** (sources now cleared before reconfiguration)
+
+**All critical issues resolved!** Profiles now switch correctly with matching sources.

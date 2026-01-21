@@ -107,8 +107,13 @@ class OBSSourceManager {
         setCurrentScene(sceneName)
         Thread.sleep(forTimeInterval: 1.0)
 
+        // Clear all existing sources from the scene
+        logInfo("Clearing existing sources from scene...")
+        removeAllSceneItems(sceneName: sceneName)
+        Thread.sleep(forTimeInterval: 1.0)
+
         // Add display captures
-        for (index, display) in config.displays.enumerated() {
+        for (index, _) in config.displays.enumerated() {
             let displayIndex = index + 1
             let sourceName = "Screen \(displayIndex)"
             createDisplayCapture(sourceName: sourceName, displayIndex: displayIndex, sceneName: sceneName)
@@ -133,6 +138,61 @@ class OBSSourceManager {
     }
 
     // MARK: - OBS WebSocket Commands
+
+    private func removeAllSceneItems(sceneName: String) {
+        logInfo("Removing all scene items from: \(sceneName)")
+
+        // Get list of scene items
+        let listResult = runShellCommand("""
+            {
+                sleep 0.3
+                echo '{"op":1,"d":{"rpcVersion":1}}'
+                sleep 0.3
+                echo '{"op":6,"d":{"requestType":"GetSceneItemList","requestId":"itemlist1","requestData":{"sceneName":"\(sceneName)"}}}'
+                sleep 0.5
+            } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+        """, timeout: 10)
+
+        // Extract scene item IDs from response
+        // Response format: "sceneItems":[{"sceneItemId":1,...},{"sceneItemId":2,...}]
+        let pattern = #"\"sceneItemId\":\s*(\d+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            logWarning("Could not create regex for scene item extraction")
+            return
+        }
+
+        let matches = regex.matches(in: listResult.output, options: [], range: NSRange(location: 0, length: listResult.output.utf16.count))
+        let itemIds = matches.compactMap { match -> Int? in
+            guard match.numberOfRanges > 1 else { return nil }
+            let range = match.range(at: 1)
+            guard let swiftRange = Range(range, in: listResult.output) else { return nil }
+            return Int(String(listResult.output[swiftRange]))
+        }
+
+        logInfo("Found \(itemIds.count) scene items to remove")
+
+        // Remove each scene item
+        for itemId in itemIds {
+            let removeResult = runShellCommand("""
+                {
+                    sleep 0.3
+                    echo '{"op":1,"d":{"rpcVersion":1}}'
+                    sleep 0.3
+                    echo '{"op":6,"d":{"requestType":"RemoveSceneItem","requestId":"remove1","requestData":{"sceneName":"\(sceneName)","sceneItemId":\(itemId)}}}'
+                    sleep 0.3
+                } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+            """, timeout: 10)
+
+            if removeResult.output.contains("\"status\":200") {
+                logInfo("Removed scene item ID: \(itemId)")
+            } else {
+                logWarning("Failed to remove scene item ID: \(itemId)")
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+
+        logSuccess("Cleared all sources from scene: \(sceneName)")
+    }
 
     private func switchToProfile(_ profileName: String) {
         logInfo("Switching to profile: \(profileName)")

@@ -361,9 +361,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         currentY -= 25
 
         let setupPopup = NSPopUpButton(frame: NSRect(x: 0, y: currentY - 25, width: 350, height: 25))
+
+        // Add existing setup types
         setupPopup.addItem(withTitle: SetupType.macSetup.displayName)
         setupPopup.addItem(withTitle: SetupType.macBookSetup.displayName)
         setupPopup.addItem(withTitle: SetupType.pcSetup.displayName)
+
+        // Add separator and create new profile option
+        setupPopup.menu?.addItem(NSMenuItem.separator())
+        let createNewItem = NSMenuItem(title: "＋ Create New Profile...", action: nil, keyEquivalent: "")
+        setupPopup.menu?.addItem(createNewItem)
+
         containerView.addSubview(setupPopup)
         currentY -= 40
 
@@ -398,6 +406,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let response = alert.runModal()
 
         if response == .alertFirstButtonReturn {
+            // Check if "Create New Profile" was selected (index 4, after separator at 3)
+            if setupPopup.indexOfSelectedItem == 4 {
+                // Open profile setup wizard
+                showProfileSetup()
+                // Reopen the start dialog after a short delay to allow wizard to close
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.showStartDialog()
+                }
+                return
+            }
+
             var projectPath: String?
             var projectName: String?
 
