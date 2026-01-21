@@ -6,6 +6,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var progressWindow = ProgressWindowController()
     private var syncConfigWindow: SyncConfigWindowController?
+    private var profileSetupWindow: ProfileSetupWindowController?
+    private var firstTimeWizard: FirstTimeSetupWizard?
     private var mainPanel: MainPanelController?
 
     private var isSyncing = false
@@ -40,6 +42,111 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         RecordingManager.shared.checkExistingSession()
         updateStatusIcon()
         setupMenu()
+
+        // Check if this is first time launch
+        checkFirstTimeLaunch()
+    }
+
+    private func checkFirstTimeLaunch() {
+        let configPath = Paths.configDir + "/profile-configs.json"
+        let hasBeenSetup = UserDefaults.standard.bool(forKey: "hasCompletedFirstTimeSetup")
+
+        if !hasBeenSetup && !FileManager.default.fileExists(atPath: configPath) {
+            // First time launch - show wizard after a short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.showFirstTimeSetup()
+            }
+        }
+    }
+
+    private func showFirstTimeSetup() {
+        if firstTimeWizard == nil {
+            firstTimeWizard = FirstTimeSetupWizard()
+            firstTimeWizard?.onComplete = { [weak self] configurations in
+                // Save configurations
+                self?.saveProfileConfigurations(configurations)
+                UserDefaults.standard.set(true, forKey: "hasCompletedFirstTimeSetup")
+                logSuccess("First-time setup completed with \(configurations.count) profiles")
+            }
+            firstTimeWizard?.onSkip = {
+                UserDefaults.standard.set(true, forKey: "hasCompletedFirstTimeSetup")
+                logInfo("User skipped first-time setup")
+            }
+        }
+        firstTimeWizard?.show()
+    }
+
+    private func saveProfileConfigurations(_ configurations: [ProfileConfiguration]) {
+        let configPath = Paths.configDir + "/profile-configs.json"
+        var configDict: [String: ProfileConfiguration] = [:]
+
+        for config in configurations {
+            configDict[config.profileName] = config
+        }
+
+        if let data = try? JSONEncoder().encode(configDict) {
+            try? FileManager.default.createDirectory(atPath: Paths.configDir, withIntermediateDirectories: true)
+            try? data.write(to: URL(fileURLWithPath: configPath))
+            logSuccess("Saved \(configurations.count) profile configurations to \(configPath)")
+
+            // Apply configurations to OBS profiles automatically
+            applyConfigurationsToOBS(configurations)
+        }
+    }
+
+    private func applyConfigurationsToOBS(_ configurations: [ProfileConfiguration]) {
+        logInfo("Applying profile configurations to OBS...")
+
+        // Check if OBS is running
+        let obsRunning = NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.obsproject.obs-studio" }
+
+        if !obsRunning {
+            logWarning("OBS is not running. Profile configuration will be applied next time OBS starts.")
+            // Show alert to user
+            let alert = NSAlert()
+            alert.messageText = "OBS Configuration Saved"
+            alert.informativeText = "Your profile configurations have been saved. Launch OBS to have them automatically configured, or they'll be set up when you start your first recording."
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "Launch OBS Now")
+            alert.addButton(withTitle: "Later")
+
+            if alert.runModal() == .alertFirstButtonReturn {
+                openOBS()
+                // Wait for OBS to launch, then apply
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+                    self?.applyConfigurationsToOBSNow(configurations)
+                }
+            }
+            return
+        }
+
+        // OBS is running, apply immediately
+        applyConfigurationsToOBSNow(configurations)
+    }
+
+    private func applyConfigurationsToOBSNow(_ configurations: [ProfileConfiguration]) {
+        progressWindow.show(message: "Configuring OBS profiles...")
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            for config in configurations {
+                self?.progressWindow.update(message: "Configuring \(config.profileName)...")
+                OBSSourceManager.shared.configureProfile(profileName: config.profileName, config: config)
+                Thread.sleep(forTimeInterval: 2.0)
+            }
+
+            DispatchQueue.main.async {
+                self?.progressWindow.hide()
+                logSuccess("All profiles configured in OBS")
+
+                // Show success message
+                let alert = NSAlert()
+                alert.messageText = "Profiles Configured!"
+                alert.informativeText = "\(configurations.count) profile(s) have been configured in OBS with your selected sources. You're ready to start recording!"
+                alert.alertStyle = .informational
+                alert.addButton(withTitle: "Great!")
+                alert.runModal()
+            }
+        }
     }
 
     // MARK: - Main Panel Setup
@@ -169,6 +276,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let recordingItem = NSMenuItem(title: "Recording: \(session.projectName)", action: nil, keyEquivalent: "")
                 recordingItem.isEnabled = false
                 menu.addItem(recordingItem)
+
+                let setupItem = NSMenuItem(title: "Setup: \(session.setupType.displayName)", action: nil, keyEquivalent: "")
+                setupItem.isEnabled = false
+                menu.addItem(setupItem)
             }
             menu.addItem(NSMenuItem.separator())
             menu.addItem(NSMenuItem(title: "Stop Recording", action: #selector(stopRecording), keyEquivalent: "s"))
@@ -216,6 +327,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(transcriptionItem)
 
         menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: "Configure Profiles...", action: #selector(showProfileSetup), keyEquivalent: "p"))
+        menu.addItem(NSMenuItem(title: "View Latest Session Log", action: #selector(viewLatestSessionLog), keyEquivalent: "l"))
         menu.addItem(NSMenuItem(title: "Open OBS", action: #selector(openOBS), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Open Recordings Folder", action: #selector(openRecordingsFolder), keyEquivalent: ""))
 
@@ -236,23 +349,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Start Recording")
         alert.addButton(withTitle: "Cancel")
 
-        let containerView = NSView(frame: NSRect(x: 0, y: 0, width: 350, height: existingProjects.isEmpty ? 60 : 120))
+        let containerHeight: CGFloat = existingProjects.isEmpty ? 125 : 185
+        let containerView = NSView(frame: NSRect(x: 0, y: 0, width: 350, height: containerHeight))
 
+        var currentY = containerHeight
+
+        // Setup type selection
+        let setupLabel = NSTextField(labelWithString: "Recording setup:")
+        setupLabel.frame = NSRect(x: 0, y: currentY - 20, width: 350, height: 17)
+        containerView.addSubview(setupLabel)
+        currentY -= 25
+
+        let setupPopup = NSPopUpButton(frame: NSRect(x: 0, y: currentY - 25, width: 350, height: 25))
+        setupPopup.addItem(withTitle: SetupType.macSetup.displayName)
+        setupPopup.addItem(withTitle: SetupType.macBookSetup.displayName)
+        setupPopup.addItem(withTitle: SetupType.pcSetup.displayName)
+        containerView.addSubview(setupPopup)
+        currentY -= 40
+
+        // New project name
         let newLabel = NSTextField(labelWithString: "New project name:")
-        newLabel.frame = NSRect(x: 0, y: containerView.frame.height - 20, width: 350, height: 17)
+        newLabel.frame = NSRect(x: 0, y: currentY - 20, width: 350, height: 17)
         containerView.addSubview(newLabel)
+        currentY -= 25
 
-        let nameField = NSTextField(frame: NSRect(x: 0, y: containerView.frame.height - 45, width: 350, height: 24))
+        let nameField = NSTextField(frame: NSRect(x: 0, y: currentY - 24, width: 350, height: 24))
         nameField.placeholderString = "Enter project name..."
         containerView.addSubview(nameField)
+        currentY -= 35
 
         var projectPopup: NSPopUpButton?
         if !existingProjects.isEmpty {
             let existingLabel = NSTextField(labelWithString: "Or continue existing project:")
-            existingLabel.frame = NSRect(x: 0, y: 30, width: 350, height: 17)
+            existingLabel.frame = NSRect(x: 0, y: currentY - 17, width: 350, height: 17)
             containerView.addSubview(existingLabel)
+            currentY -= 25
 
-            let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 350, height: 25))
+            let popup = NSPopUpButton(frame: NSRect(x: 0, y: currentY - 25, width: 350, height: 25))
             popup.addItem(withTitle: "-- Select existing project --")
             for project in existingProjects {
                 popup.addItem(withTitle: project.name)
@@ -282,10 +415,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 projectPath = RecordingManager.shared.createProjectFolder(name: name)
             }
 
+            // Get selected setup type
+            let setupType: SetupType
+            switch setupPopup.indexOfSelectedItem {
+            case 0:
+                setupType = .macSetup
+            case 1:
+                setupType = .macBookSetup
+            case 2:
+                setupType = .pcSetup
+            default:
+                setupType = .macSetup
+            }
+
             if let path = projectPath, let name = projectName {
                 progressWindow.show(message: "Starting recording...")
-                showSystemNotification(title: "Starting Recording", body: "Project: \(name)")
-                RecordingManager.shared.startRecording(projectPath: path, projectName: name)
+                showSystemNotification(title: "Starting Recording", body: "Project: \(name)\nSetup: \(setupType.displayName)")
+                RecordingManager.shared.startRecording(projectPath: path, projectName: name, setupType: setupType)
             }
         }
     }
@@ -451,6 +597,54 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openRecordingsFolder() {
         try? FileManager.default.createDirectory(atPath: Paths.recordingsBase, withIntermediateDirectories: true)
         NSWorkspace.shared.open(URL(fileURLWithPath: Paths.recordingsBase))
+    }
+
+    @objc private func showProfileSetup() {
+        if profileSetupWindow == nil {
+            profileSetupWindow = ProfileSetupWindowController()
+            profileSetupWindow?.onSave = { [weak self] configurations in
+                logInfo("Profile configurations saved: \(configurations.count) profiles")
+                // Apply configurations to OBS profiles automatically
+                let configArray = Array(configurations.values)
+                self?.applyConfigurationsToOBS(configArray)
+            }
+        }
+        profileSetupWindow?.show()
+    }
+
+    @objc private func viewLatestSessionLog() {
+        let fileManager = FileManager.default
+        let recordingsPath = Paths.recordingsBase
+
+        // Find the most recent project folder with a session log
+        guard let projects = try? fileManager.contentsOfDirectory(atPath: recordingsPath) else {
+            showAlert(title: "No Session Logs", message: "No recording sessions found.")
+            return
+        }
+
+        let sortedProjects = projects.filter { $0.hasPrefix("20") }.sorted().reversed()
+
+        for projectName in sortedProjects {
+            let projectPath = recordingsPath + "/" + projectName
+            let logPath = projectPath + "/session.log"
+
+            if fileManager.fileExists(atPath: logPath) {
+                // Open the log file with default text editor
+                NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
+                return
+            }
+        }
+
+        showAlert(title: "No Session Logs", message: "No session.log files found in recent recordings.")
+    }
+
+    private func showAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @objc private func quitApp() {

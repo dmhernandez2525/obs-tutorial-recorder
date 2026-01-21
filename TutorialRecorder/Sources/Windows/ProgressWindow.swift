@@ -43,6 +43,8 @@ class ProgressWindowController {
         newWindow.title = "Tutorial Recorder"
         newWindow.center()
         newWindow.isReleasedWhenClosed = false
+        newWindow.level = .statusBar  // Highest level - above all windows including OBS
+        newWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         let contentView = NSView(frame: newWindow.contentView!.bounds)
 

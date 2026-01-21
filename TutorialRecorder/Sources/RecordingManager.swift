@@ -9,12 +9,36 @@ enum RecordingState {
     case stopping
 }
 
+// MARK: - Setup Type
+
+enum SetupType: String, Codable {
+    case macSetup = "Mac Setup (Multiple Screens)"
+    case macBookSetup = "MacBook Setup (One Screen, Native Camera)"
+    case pcSetup = "PC Setup (One Screen, 10 Cameras)"
+
+    var displayName: String {
+        return self.rawValue
+    }
+
+    var obsProfileName: String {
+        switch self {
+        case .macSetup:
+            return "Mac-MultiScreen"
+        case .macBookSetup:
+            return "MacBook-Single"
+        case .pcSetup:
+            return "PC-10Cameras"
+        }
+    }
+}
+
 // MARK: - Session Info
 
 struct SessionInfo {
     let projectPath: String
     let projectName: String
     let startTime: Date
+    let setupType: SetupType
 }
 
 // MARK: - Recording Manager
@@ -48,7 +72,9 @@ class RecordingManager {
         }
 
         let name = (path as NSString).lastPathComponent
-        currentSession = SessionInfo(projectPath: path, projectName: name, startTime: Date())
+        // Default to macSetup for existing sessions (or could load from metadata.json)
+        let setupType: SetupType = .macSetup
+        currentSession = SessionInfo(projectPath: path, projectName: name, startTime: Date(), setupType: setupType)
         state = .recording
         onStateChanged?(.recording)
     }
@@ -107,7 +133,7 @@ class RecordingManager {
 
     // MARK: - Recording Control
 
-    func startRecording(projectPath: String, projectName: String) {
+    func startRecording(projectPath: String, projectName: String, setupType: SetupType) {
         guard state == .idle else {
             onError?("Already recording or in progress")
             return
@@ -118,13 +144,14 @@ class RecordingManager {
 
         // Initialize session
         let startTime = Date()
-        currentSession = SessionInfo(projectPath: projectPath, projectName: projectName, startTime: startTime)
+        currentSession = SessionInfo(projectPath: projectPath, projectName: projectName, startTime: startTime, setupType: setupType)
 
         // Initialize session log
         let logHeader = """
         =============================================
         Session started: \(startTime)
         Project: \(projectPath)
+        Setup: \(setupType.displayName)
         =============================================
         """
         try? logHeader.write(toFile: projectPath + "/session.log", atomically: true, encoding: .utf8)
@@ -132,6 +159,7 @@ class RecordingManager {
 
         logInfo("Starting recording for project: \(projectName)")
         logInfo("Project path: \(projectPath)")
+        logInfo("Setup type: \(setupType.displayName)")
 
         // Write session files
         try? projectPath.write(toFile: sessionFile, atomically: true, encoding: .utf8)
@@ -149,6 +177,7 @@ class RecordingManager {
             logInfo("OBS not running, launching...")
             onProgress?("Launching OBS...")
 
+            // Launch OBS normally (--profile argument doesn't work on macOS)
             let obsURL = URL(fileURLWithPath: "/Applications/OBS.app")
             workspace.openApplication(at: obsURL, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
                 if let error = error {
@@ -160,13 +189,14 @@ class RecordingManager {
                 logInfo("OBS launched, waiting for WebSocket...")
                 self?.onProgress?("Waiting for OBS to start...")
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                // Wait longer to ensure OBS is fully started before connecting
+                DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
                     self?.connectAndStartRecording(projectPath: projectPath)
                 }
             }
         } else {
             obsLaunchedByApp = false
-            logInfo("OBS already running")
+            logInfo("OBS already running, will switch profile via WebSocket...")
             onProgress?("Connecting to OBS...")
             connectAndStartRecording(projectPath: projectPath)
         }
@@ -204,6 +234,52 @@ class RecordingManager {
             }
 
             logInfo("Connected to OBS WebSocket")
+
+            // Ensure all required profiles exist and get current profile
+            self?.onProgress?("Checking OBS profiles...")
+            let currentProfile = self?.ensureProfilesExist()
+
+            // Verify and switch to the appropriate OBS profile
+            if let session = self?.currentSession {
+                let targetProfile = session.setupType.obsProfileName
+                self?.onProgress?("Verifying OBS profile...")
+                logInfo("Target profile: \(targetProfile)")
+                logInfo("Current OBS profile: \(currentProfile ?? "unknown")")
+
+                // Only switch if we're not already on the correct profile
+                if currentProfile != targetProfile {
+                    self?.onProgress?("Switching to \(session.setupType.displayName) profile...")
+                    logInfo("Switching OBS profile from '\(currentProfile ?? "unknown")' to '\(targetProfile)'")
+
+                    let profileResult = runShellCommand("""
+                        {
+                            sleep 0.3
+                            echo '{"op":1,"d":{"rpcVersion":1}}'
+                            sleep 0.3
+                            echo '{"op":6,"d":{"requestType":"SetCurrentProfile","requestId":"profile1","requestData":{"profileName":"\(targetProfile)"}}}'
+                            sleep 1.5
+                        } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+                    """, timeout: 10)
+
+                    if profileResult.output.contains("\"status\":200") || profileResult.output.contains("\"op\":7") {
+                        logSuccess("Successfully switched to profile: \(targetProfile)")
+                    } else {
+                        logWarning("Profile switch response: \(String(profileResult.output.prefix(200)))")
+                        if profileResult.output.contains("No such profile") {
+                            logError("Profile '\(targetProfile)' does not exist in OBS!")
+                            logError("Please create this profile in OBS: Profile > New > \(targetProfile)")
+                        } else {
+                            logWarning("Continuing with current profile...")
+                        }
+                    }
+
+                    // Wait for profile to fully load before continuing
+                    self?.onProgress?("Profile switched, waiting for OBS to stabilize...")
+                    Thread.sleep(forTimeInterval: 3.0)
+                } else {
+                    logSuccess("Already on correct profile: \(targetProfile)")
+                }
+            }
 
             // Set record directory
             self?.onProgress?("Setting up recording...")
@@ -493,5 +569,127 @@ class RecordingManager {
             logSuccess("OBS closed")
         }
         obsLaunchedByApp = false
+    }
+
+    // MARK: - Helper Methods
+
+    private func extractProfileName(from websocketOutput: String) -> String? {
+        // Look for "currentProfileName":"SomeProfile" in the GetCurrentProfile response
+        let pattern = #"\"currentProfileName\":\s*\"([^\"]+)\""#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []),
+              let match = regex.firstMatch(in: websocketOutput, options: [], range: NSRange(location: 0, length: websocketOutput.utf16.count)),
+              match.numberOfRanges > 1 else {
+            return nil
+        }
+
+        let range = match.range(at: 1)
+        if let swiftRange = Range(range, in: websocketOutput) {
+            return String(websocketOutput[swiftRange])
+        }
+
+        return nil
+    }
+
+    private func getProfileList() -> (profiles: [String], currentProfile: String?) {
+        logInfo("Fetching profile list from OBS...")
+
+        let result = runShellCommand("""
+            {
+                sleep 0.3
+                echo '{"op":1,"d":{"rpcVersion":1}}'
+                sleep 0.3
+                echo '{"op":6,"d":{"requestType":"GetProfileList","requestId":"proflist1"}}'
+                sleep 0.5
+            } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+        """, timeout: 10)
+
+        logInfo("GetProfileList response: \(String(result.output.prefix(300)))")
+
+        // Extract current profile name
+        let currentProfile = extractProfileName(from: result.output)
+
+        // Extract profile names from response like: "profiles":["Profile1","Profile2"]
+        let pattern = #"\"profiles\":\s*\[(.*?)\]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
+              let match = regex.firstMatch(in: result.output, options: [], range: NSRange(location: 0, length: result.output.utf16.count)),
+              match.numberOfRanges > 1 else {
+            logWarning("Could not parse profile list")
+            return ([], currentProfile)
+        }
+
+        let range = match.range(at: 1)
+        guard let swiftRange = Range(range, in: result.output) else {
+            return ([], currentProfile)
+        }
+
+        let profilesString = String(result.output[swiftRange])
+        // Extract individual profile names from "Profile1","Profile2"
+        let namePattern = #"\"([^\"]+)\""#
+        guard let nameRegex = try? NSRegularExpression(pattern: namePattern, options: []) else {
+            return ([], currentProfile)
+        }
+
+        let matches = nameRegex.matches(in: profilesString, options: [], range: NSRange(location: 0, length: profilesString.utf16.count))
+        let profiles = matches.compactMap { match -> String? in
+            guard match.numberOfRanges > 1 else { return nil }
+            let range = match.range(at: 1)
+            guard let swiftRange = Range(range, in: profilesString) else { return nil }
+            return String(profilesString[swiftRange])
+        }
+
+        logInfo("Found \(profiles.count) profiles: \(profiles.joined(separator: ", "))")
+        logInfo("Current profile from list: \(currentProfile ?? "unknown")")
+        return (profiles, currentProfile)
+    }
+
+    private func createProfile(name: String) -> Bool {
+        logInfo("Creating OBS profile: \(name)")
+
+        let result = runShellCommand("""
+            {
+                sleep 0.3
+                echo '{"op":1,"d":{"rpcVersion":1}}'
+                sleep 0.3
+                echo '{"op":6,"d":{"requestType":"CreateProfile","requestId":"createprof1","requestData":{"profileName":"\(name)"}}}'
+                sleep 1.0
+            } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+        """, timeout: 10)
+
+        logInfo("CreateProfile response: \(String(result.output.prefix(200)))")
+
+        if result.output.contains("\"status\":200") || result.output.contains("\"op\":7") {
+            logSuccess("Successfully created profile: \(name)")
+            return true
+        } else if result.output.contains("Profile already exists") {
+            logInfo("Profile already exists: \(name)")
+            return true
+        } else {
+            logError("Failed to create profile: \(name)")
+            logError("Response: \(String(result.output.prefix(300)))")
+            return false
+        }
+    }
+
+    private func ensureProfilesExist() -> String? {
+        logInfo("Ensuring all required OBS profiles exist...")
+
+        let (existingProfiles, currentProfile) = getProfileList()
+        let requiredProfiles = [
+            SetupType.macSetup.obsProfileName,
+            SetupType.macBookSetup.obsProfileName,
+            SetupType.pcSetup.obsProfileName
+        ]
+
+        for profileName in requiredProfiles {
+            if !existingProfiles.contains(profileName) {
+                logWarning("Profile '\(profileName)' not found, creating it...")
+                _ = createProfile(name: profileName)
+            } else {
+                logInfo("Profile '\(profileName)' already exists")
+            }
+        }
+
+        logSuccess("All required profiles are ready")
+        return currentProfile
     }
 }
