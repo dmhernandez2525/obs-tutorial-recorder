@@ -260,45 +260,83 @@ class OBSSourceManager {
         // display parameter: 0 = Display 1, 1 = Display 2, etc.
         let displayParam = displayIndex - 1
 
-        let result = runShellCommand("""
+        // Step 1: Create the input (without sceneName to avoid conflicts)
+        let createResult = runShellCommand("""
             {
                 sleep 0.3
                 echo '{"op":1,"d":{"rpcVersion":1}}'
                 sleep 0.3
-                echo '{"op":6,"d":{"requestType":"CreateInput","requestId":"input1","requestData":{"sceneName":"\(sceneName)","inputName":"\(sourceName)","inputKind":"screen_capture","inputSettings":{"display":\(displayParam),"show_cursor":true}}}}'
-                sleep 1.0
+                echo '{"op":6,"d":{"requestType":"CreateInput","requestId":"input1","requestData":{"inputName":"\(sourceName)","inputKind":"screen_capture","inputSettings":{"display":\(displayParam),"show_cursor":true}}}}'
+                sleep 0.5
             } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
         """, timeout: 10)
 
-        if result.output.contains("\"status\":200") {
-            logSuccess("Created display capture: \(sourceName)")
-        } else if result.output.contains("already exists") {
-            logInfo("Display capture already exists: \(sourceName)")
+        if createResult.output.contains("\"status\":200") {
+            logInfo("Created input: \(sourceName)")
+        } else if createResult.output.contains("already exists") || createResult.output.contains("\"code\":601") {
+            logInfo("Input already exists: \(sourceName)")
+        }
+
+        // Step 2: Add to scene using CreateSceneItem
+        let addResult = runShellCommand("""
+            {
+                sleep 0.3
+                echo '{"op":1,"d":{"rpcVersion":1}}'
+                sleep 0.3
+                echo '{"op":6,"d":{"requestType":"CreateSceneItem","requestId":"additem1","requestData":{"sceneName":"\(sceneName)","sourceName":"\(sourceName)"}}}}'
+                sleep 0.5
+            } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+        """, timeout: 10)
+
+        if addResult.output.contains("\"status\":200") {
+            logSuccess("Added '\(sourceName)' to scene '\(sceneName)'")
+        } else if addResult.output.contains("already exists") || addResult.output.contains("already in scene") {
+            logInfo("'\(sourceName)' already in scene '\(sceneName)'")
         } else {
-            logWarning("Create display capture response: \(String(result.output.prefix(300)))")
+            logWarning("Add to scene response: \(String(addResult.output.prefix(300)))")
         }
     }
 
     private func createVideoCapture(sourceName: String, deviceName: String, sceneName: String) {
         logInfo("Creating video capture: \(sourceName)")
 
-        // macOS uses "av_capture_input" for cameras
-        let result = runShellCommand("""
+        // macOS uses "av_capture_input_v2" for cameras in OBS 28+
+        // Step 1: Create the input
+        let createResult = runShellCommand("""
             {
                 sleep 0.3
                 echo '{"op":1,"d":{"rpcVersion":1}}'
                 sleep 0.3
-                echo '{"op":6,"d":{"requestType":"CreateInput","requestId":"input1","requestData":{"sceneName":"\(sceneName)","inputName":"\(sourceName)","inputKind":"av_capture_input","inputSettings":{"device_name":"\(deviceName)"}}}}'
-                sleep 1.0
+                echo '{"op":6,"d":{"requestType":"CreateInput","requestId":"input1","requestData":{"inputName":"\(sourceName)","inputKind":"av_capture_input_v2","inputSettings":{"device":"\(deviceName)"}}}}'
+                sleep 0.5
             } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
         """, timeout: 10)
 
-        if result.output.contains("\"status\":200") {
-            logSuccess("Created video capture: \(sourceName)")
-        } else if result.output.contains("already exists") {
-            logInfo("Video capture already exists: \(sourceName)")
+        if createResult.output.contains("\"status\":200") {
+            logInfo("Created input: \(sourceName)")
+        } else if createResult.output.contains("already exists") || createResult.output.contains("\"code\":601") {
+            logInfo("Input already exists: \(sourceName)")
         } else {
-            logWarning("Create video capture response: \(String(result.output.prefix(300)))")
+            logWarning("Create input response: \(String(createResult.output.prefix(300)))")
+        }
+
+        // Step 2: Add to scene
+        let addResult = runShellCommand("""
+            {
+                sleep 0.3
+                echo '{"op":1,"d":{"rpcVersion":1}}'
+                sleep 0.3
+                echo '{"op":6,"d":{"requestType":"CreateSceneItem","requestId":"additem1","requestData":{"sceneName":"\(sceneName)","sourceName":"\(sourceName)"}}}}'
+                sleep 0.5
+            } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+        """, timeout: 10)
+
+        if addResult.output.contains("\"status\":200") {
+            logSuccess("Added '\(sourceName)' to scene '\(sceneName)'")
+        } else if addResult.output.contains("already exists") || addResult.output.contains("already in scene") {
+            logInfo("'\(sourceName)' already in scene '\(sceneName)'")
+        } else {
+            logWarning("Add to scene response: \(String(addResult.output.prefix(300)))")
         }
     }
 
@@ -306,22 +344,42 @@ class OBSSourceManager {
         logInfo("Creating audio capture: \(sourceName)")
 
         // macOS uses "coreaudio_input_capture" for audio inputs
-        let result = runShellCommand("""
+        // Step 1: Create the input
+        let createResult = runShellCommand("""
             {
                 sleep 0.3
                 echo '{"op":1,"d":{"rpcVersion":1}}'
                 sleep 0.3
-                echo '{"op":6,"d":{"requestType":"CreateInput","requestId":"input1","requestData":{"sceneName":"\(sceneName)","inputName":"\(sourceName)","inputKind":"coreaudio_input_capture","inputSettings":{"device_id":"\(deviceName)"}}}}'
-                sleep 1.0
+                echo '{"op":6,"d":{"requestType":"CreateInput","requestId":"input1","requestData":{"inputName":"\(sourceName)","inputKind":"coreaudio_input_capture","inputSettings":{"device_id":"\(deviceName)"}}}}'
+                sleep 0.5
             } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
         """, timeout: 10)
 
-        if result.output.contains("\"status\":200") {
-            logSuccess("Created audio capture: \(sourceName)")
-        } else if result.output.contains("already exists") {
-            logInfo("Audio capture already exists: \(sourceName)")
+        if createResult.output.contains("\"status\":200") {
+            logInfo("Created input: \(sourceName)")
+        } else if createResult.output.contains("already exists") || createResult.output.contains("\"code\":601") {
+            logInfo("Input already exists: \(sourceName)")
         } else {
-            logWarning("Create audio capture response: \(String(result.output.prefix(300)))")
+            logWarning("Create input response: \(String(createResult.output.prefix(300)))")
+        }
+
+        // Step 2: Add to scene
+        let addResult = runShellCommand("""
+            {
+                sleep 0.3
+                echo '{"op":1,"d":{"rpcVersion":1}}'
+                sleep 0.3
+                echo '{"op":6,"d":{"requestType":"CreateSceneItem","requestId":"additem1","requestData":{"sceneName":"\(sceneName)","sourceName":"\(sourceName)"}}}}'
+                sleep 0.5
+            } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+        """, timeout: 10)
+
+        if addResult.output.contains("\"status\":200") {
+            logSuccess("Added '\(sourceName)' to scene '\(sceneName)'")
+        } else if addResult.output.contains("already exists") || addResult.output.contains("already in scene") {
+            logInfo("'\(sourceName)' already in scene '\(sceneName)'")
+        } else {
+            logWarning("Add to scene response: \(String(addResult.output.prefix(300)))")
         }
     }
 
