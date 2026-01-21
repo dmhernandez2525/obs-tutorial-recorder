@@ -619,16 +619,143 @@ class RecordingManager {
             }
         }
 
-        // Apply configuration to OBS
+        // Check if profile is already configured correctly
         if let config = savedConfig {
-            logInfo("Applying configuration to OBS profile '\(targetProfile)'...")
-            OBSSourceManager.shared.configureProfile(profileName: targetProfile, config: config)
-            logSuccess("Profile '\(targetProfile)' configured successfully")
+            let sceneName = "Tutorial Recording"
+
+            // Check if scene exists and has correct sources
+            let isConfigured = checkIfProfileConfigured(sceneName: sceneName, expectedConfig: config)
+
+            if isConfigured {
+                logSuccess("✓ Profile '\(targetProfile)' is already configured correctly!")
+                logInfo("Scene '\(sceneName)' exists with all expected sources")
+                logInfo("Skipping reconfiguration - just selecting the scene")
+
+                // Just set the scene as current
+                let setSceneResult = runShellCommand("""
+                    {
+                        sleep 0.3
+                        echo '{"op":1,"d":{"rpcVersion":1}}'
+                        sleep 0.3
+                        echo '{"op":6,"d":{"requestType":"SetCurrentProgramScene","requestId":"setscene1","requestData":{"sceneName":"\(sceneName)"}}}'
+                        sleep 0.5
+                    } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+                """, timeout: 10)
+
+                if setSceneResult.output.contains("\"status\":200") {
+                    logSuccess("Scene '\(sceneName)' selected")
+                }
+            } else {
+                logWarning("Profile '\(targetProfile)' needs (re)configuration")
+                logInfo("Configuring profile with correct sources...")
+                OBSSourceManager.shared.configureProfile(profileName: targetProfile, config: config)
+                logSuccess("Profile '\(targetProfile)' configured successfully")
+            }
         } else {
             logError("Failed to get or create configuration for '\(targetProfile)'")
         }
 
         logInfo("===============================================")
+    }
+
+    private func checkIfProfileConfigured(sceneName: String, expectedConfig: ProfileConfiguration) -> Bool {
+        logInfo("Checking if scene '\(sceneName)' exists with correct sources...")
+
+        // Check if scene exists
+        let sceneListResult = runShellCommand("""
+            {
+                sleep 0.3
+                echo '{"op":1,"d":{"rpcVersion":1}}'
+                sleep 0.3
+                echo '{"op":6,"d":{"requestType":"GetSceneList","requestId":"scenelist1"}}'
+                sleep 0.5
+            } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+        """, timeout: 10)
+
+        // Check if our scene exists
+        if !sceneListResult.output.contains("\"\(sceneName)\"") {
+            logInfo("Scene '\(sceneName)' does not exist - needs configuration")
+            return false
+        }
+
+        logInfo("Scene '\(sceneName)' exists - checking sources...")
+
+        // Get sources in the scene
+        let itemsResult = runShellCommand("""
+            {
+                sleep 0.3
+                echo '{"op":1,"d":{"rpcVersion":1}}'
+                sleep 0.3
+                echo '{"op":6,"d":{"requestType":"GetSceneItemList","requestId":"itemlist1","requestData":{"sceneName":"\(sceneName)"}}}'
+                sleep 0.5
+            } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
+        """, timeout: 10)
+
+        // Extract source names
+        let sourcePattern = #"\"sourceName\":\s*\"([^\"]+)\""#
+        guard let sourceRegex = try? NSRegularExpression(pattern: sourcePattern, options: []) else {
+            logWarning("Could not create source name regex")
+            return false
+        }
+
+        let sourceMatches = sourceRegex.matches(in: itemsResult.output, options: [], range: NSRange(location: 0, length: itemsResult.output.utf16.count))
+        let actualSources = sourceMatches.compactMap { match -> String? in
+            guard match.numberOfRanges > 1,
+                  let range = Range(match.range(at: 1), in: itemsResult.output) else {
+                return nil
+            }
+            return String(itemsResult.output[range])
+        }
+
+        logInfo("Found \(actualSources.count) source(s) in scene:")
+        for source in actualSources {
+            logInfo("  - \(source)")
+        }
+
+        // Build expected source names
+        var expectedSources: [String] = []
+
+        // Add displays
+        for (index, _) in expectedConfig.displays.enumerated() {
+            expectedSources.append("Screen \(index + 1)")
+        }
+
+        // Add cameras
+        expectedSources.append(contentsOf: expectedConfig.cameras)
+
+        // Add audio
+        expectedSources.append(contentsOf: expectedConfig.audioInputs)
+
+        logInfo("Expected \(expectedSources.count) source(s):")
+        for source in expectedSources {
+            logInfo("  - \(source)")
+        }
+
+        // Check if all expected sources are present
+        let actualSourcesSet = Set(actualSources)
+        let expectedSourcesSet = Set(expectedSources)
+
+        let missingExpected = expectedSourcesSet.subtracting(actualSourcesSet)
+        let extraActual = actualSourcesSet.subtracting(expectedSourcesSet)
+
+        if !missingExpected.isEmpty {
+            logWarning("Missing expected sources:")
+            for source in missingExpected {
+                logWarning("  - \(source)")
+            }
+            return false
+        }
+
+        if !extraActual.isEmpty {
+            logWarning("Extra sources found (not in config):")
+            for source in extraActual {
+                logWarning("  - \(source)")
+            }
+            return false
+        }
+
+        logSuccess("✓ All sources match expected configuration!")
+        return true
     }
 
     private func createDefaultConfiguration(for setupType: SetupType) -> ProfileConfiguration {
