@@ -98,8 +98,9 @@ class OBSSourceManager {
         switchToProfile(profileName)
         Thread.sleep(forTimeInterval: 2.0)
 
-        // Create or get the default scene
-        let sceneName = "Tutorial Recording"
+        // Create scene with same name as profile
+        let sceneName = profileName
+        logInfo("Creating/configuring scene: \(sceneName)")
         createScene(sceneName)
         Thread.sleep(forTimeInterval: 1.0)
 
@@ -108,7 +109,7 @@ class OBSSourceManager {
         Thread.sleep(forTimeInterval: 1.0)
 
         // Clear all existing sources from the scene
-        logInfo("Clearing existing sources from scene...")
+        logInfo("Clearing existing sources from scene '\(sceneName)'...")
         removeAllSceneItems(sceneName: sceneName)
         Thread.sleep(forTimeInterval: 1.0)
 

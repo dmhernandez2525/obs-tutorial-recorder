@@ -285,8 +285,8 @@ class RecordingManager {
                 self?.ensureProfileConfigured(targetProfile: targetProfile, setupType: session.setupType)
                 Thread.sleep(forTimeInterval: 2.0)
 
-                // Verify what sources are in the current scene
-                self?.verifySceneSources()
+                // Verify what sources are in the current scene (scene name = profile name)
+                self?.verifySceneSources(sceneName: targetProfile)
             }
 
             // Set record directory
@@ -621,7 +621,8 @@ class RecordingManager {
 
         // Check if profile is already configured correctly
         if let config = savedConfig {
-            let sceneName = "Tutorial Recording"
+            // Scene name should match profile name
+            let sceneName = targetProfile
 
             // Check if scene exists and has correct sources
             let isConfigured = checkIfProfileConfigured(sceneName: sceneName, expectedConfig: config)
@@ -791,36 +792,11 @@ class RecordingManager {
         }
     }
 
-    private func verifySceneSources() {
+    private func verifySceneSources(sceneName: String) {
         logInfo("=========================================")
         logInfo("VERIFYING SCENE SOURCES BEFORE RECORDING")
         logInfo("=========================================")
-
-        // Get current scene
-        let sceneResult = runShellCommand("""
-            {
-                sleep 0.3
-                echo '{"op":1,"d":{"rpcVersion":1}}'
-                sleep 0.3
-                echo '{"op":6,"d":{"requestType":"GetCurrentProgramScene","requestId":"getscene1"}}'
-                sleep 0.5
-            } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
-        """, timeout: 10)
-
-        logInfo("GetCurrentProgramScene response: \(String(sceneResult.output.prefix(500)))")
-
-        // Extract scene name
-        let scenePattern = #"\"currentProgramSceneName\":\s*\"([^\"]+)\""#
-        guard let sceneRegex = try? NSRegularExpression(pattern: scenePattern, options: []),
-              let sceneMatch = sceneRegex.firstMatch(in: sceneResult.output, options: [], range: NSRange(location: 0, length: sceneResult.output.utf16.count)),
-              sceneMatch.numberOfRanges > 1,
-              let sceneRange = Range(sceneMatch.range(at: 1), in: sceneResult.output) else {
-            logWarning("Could not extract scene name from response")
-            return
-        }
-
-        let sceneName = String(sceneResult.output[sceneRange])
-        logInfo("Current scene: \(sceneName)")
+        logInfo("Scene to verify: \(sceneName)")
 
         // Get scene items
         let itemsResult = runShellCommand("""
