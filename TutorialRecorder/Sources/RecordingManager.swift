@@ -306,6 +306,15 @@ class RecordingManager {
 
             Thread.sleep(forTimeInterval: 0.5)
 
+            // Enable ISO recording - add Source Record filters to each source
+            if let session = self?.currentSession {
+                let sceneName = session.setupType.obsProfileName
+                self?.onProgress?("Configuring ISO recording...")
+                logInfo("Setting up ISO recording (Source Record filters)...")
+                OBSSourceManager.shared.enableISORecording(sceneName: sceneName, recordPath: rawDir)
+                Thread.sleep(forTimeInterval: 1.0)
+            }
+
             // Start recording
             self?.onProgress?("Starting recording...")
             logInfo("Sending StartRecord command...")
@@ -630,8 +639,12 @@ class RecordingManager {
             if isConfigured {
                 logSuccess("✓ Profile '\(targetProfile)' is already configured correctly!")
                 logInfo("Scene '\(sceneName)' exists with all expected sources")
-                logInfo("Skipping reconfiguration - just selecting the scene")
 
+                // Verify that input settings (devices) are properly configured
+                logInfo("Verifying input device settings...")
+                _ = OBSSourceManager.shared.verifyAndFixInputSettings(sceneName: sceneName, config: config)
+
+                logInfo("Setting scene as current...")
                 // Just set the scene as current
                 let setSceneResult = runShellCommand("""
                     {
@@ -643,7 +656,7 @@ class RecordingManager {
                     } | timeout 5 websocat "ws://localhost:4455" 2>/dev/null
                 """, timeout: 10)
 
-                if setSceneResult.output.contains("\"status\":200") {
+                if setSceneResult.output.contains("\"code\":100") || setSceneResult.output.contains("\"result\":true") {
                     logSuccess("Scene '\(sceneName)' selected")
                 }
             } else {

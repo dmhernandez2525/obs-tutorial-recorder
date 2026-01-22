@@ -13,9 +13,25 @@
 }
 
 .logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   font-size: 1.25rem;
   font-weight: bold;
   color: #fff;
+}
+
+.logo svg {
+  flex-shrink: 0;
+}
+
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .nav-links {
@@ -102,6 +118,11 @@
   color: #fff;
 }
 
+.btn-large {
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+}
+
 /* Sections */
 section {
   padding: 4rem 2rem;
@@ -146,8 +167,9 @@ section h2 {
 }
 
 .feature-icon {
-  font-size: 2.5rem;
   margin-bottom: 1rem;
+  display: flex;
+  justify-content: center;
 }
 
 .feature-card h3 {
@@ -160,9 +182,94 @@ section h2 {
   font-size: 0.95rem;
 }
 
+/* Profiles Section */
+.profiles-section {
+  background: #f8f9fa;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.profile-card {
+  background: #fff;
+  padding: 2rem;
+  border-radius: 12px;
+  text-align: center;
+  border: 2px solid #e2e8f0;
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.profile-card:hover {
+  transform: translateY(-4px);
+  border-color: #e53e3e;
+}
+
+.profile-icon {
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+.profile-card h3 {
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.profile-desc {
+  color: #666;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.profile-sources {
+  list-style: none;
+  text-align: left;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.profile-sources li {
+  padding: 0.25rem 0;
+  color: #666;
+  font-size: 0.875rem;
+  padding-left: 1.25rem;
+  position: relative;
+}
+
+.profile-sources li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: #e53e3e;
+}
+
+.profile-wizard-info {
+  background: #fff;
+  padding: 2rem;
+  border-radius: 12px;
+  text-align: center;
+  border-left: 4px solid #e53e3e;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.profile-wizard-info h3 {
+  color: #e53e3e;
+  margin-bottom: 0.5rem;
+}
+
+.profile-wizard-info p {
+  color: #666;
+}
+
 /* Workflow */
 .workflow-section {
-  background: #f8f9fa;
+  background: #fff;
 }
 
 .workflow {
@@ -209,7 +316,7 @@ section h2 {
 
 /* ISO Recording */
 .iso-section {
-  background: #fff;
+  background: #f8f9fa;
 }
 
 .iso-grid {
@@ -220,7 +327,7 @@ section h2 {
 }
 
 .iso-card {
-  background: #f8f9fa;
+  background: #fff;
   padding: 1.5rem;
   border-radius: 8px;
   text-align: center;
@@ -233,7 +340,7 @@ section h2 {
 }
 
 .iso-file {
-  font-family: 'Fira Code', monospace;
+  font-family: 'Fira Code', 'SF Mono', monospace;
   background: #2d3748;
   color: #e2e8f0;
   padding: 0.25rem 0.5rem;
@@ -249,11 +356,12 @@ section h2 {
 }
 
 .iso-benefits {
-  background: #fff3f3;
+  background: #fff;
   padding: 2rem;
   border-radius: 8px;
   max-width: 600px;
   margin: 0 auto;
+  border: 2px solid #fed7d7;
 }
 
 .iso-benefits h3 {
@@ -276,11 +384,12 @@ section h2 {
   position: absolute;
   left: 0;
   color: #38a169;
+  font-weight: bold;
 }
 
 /* Transcription */
 .transcription {
-  background: #f8f9fa;
+  background: #fff;
 }
 
 .model-grid {
@@ -290,7 +399,7 @@ section h2 {
 }
 
 .model-card {
-  background: #fff;
+  background: #f8f9fa;
   padding: 1.5rem;
   border-radius: 8px;
   text-align: center;
@@ -333,7 +442,7 @@ section h2 {
 
 /* Folder Structure */
 .folder-structure {
-  background: #fff;
+  background: #f8f9fa;
 }
 
 .folder-tree {
@@ -342,15 +451,16 @@ section h2 {
   padding: 2rem;
   border-radius: 8px;
   overflow-x: auto;
-  font-family: 'Fira Code', monospace;
+  font-family: 'Fira Code', 'SF Mono', monospace;
   font-size: 0.875rem;
   max-width: 600px;
   margin: 0 auto;
+  line-height: 1.6;
 }
 
 /* Installation */
 .installation {
-  background: #f8f9fa;
+  background: #fff;
 }
 
 .install-steps {
@@ -361,7 +471,7 @@ section h2 {
 }
 
 .install-step {
-  background: #fff;
+  background: #f8f9fa;
   padding: 1.5rem;
   border-radius: 8px;
   border-left: 4px solid #e53e3e;
@@ -378,10 +488,11 @@ section h2 {
   padding: 1rem;
   border-radius: 6px;
   overflow-x: auto;
+  margin-bottom: 0.75rem;
 }
 
 .install-step code {
-  font-family: 'Fira Code', monospace;
+  font-family: 'Fira Code', 'SF Mono', monospace;
   font-size: 0.875rem;
 }
 
@@ -391,7 +502,7 @@ section h2 {
 
 /* Requirements */
 .requirements {
-  background: #fff;
+  background: #f8f9fa;
 }
 
 .req-grid {
@@ -401,7 +512,7 @@ section h2 {
 }
 
 .req-card {
-  background: #f8f9fa;
+  background: #fff;
   padding: 1.5rem;
   border-radius: 8px;
 }
@@ -418,6 +529,37 @@ section h2 {
 .req-card li {
   padding: 0.25rem 0;
   color: #666;
+}
+
+/* CTA Section */
+.cta-section {
+  background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+  color: #fff;
+  text-align: center;
+  border-radius: 12px;
+  margin: 2rem auto;
+  max-width: 1200px;
+}
+
+.cta-section h2 {
+  color: #fff;
+}
+
+.cta-section p {
+  font-size: 1.1rem;
+  opacity: 0.9;
+  margin-bottom: 2rem;
+}
+
+.cta-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.cta-section .btn-secondary {
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 /* Footer */
@@ -440,6 +582,11 @@ section h2 {
 .footer-section h3 {
   margin-bottom: 1rem;
   color: #fff;
+}
+
+.footer-section p {
+  color: #a0aec0;
+  max-width: 300px;
 }
 
 .footer-section a {
@@ -492,5 +639,14 @@ section h2 {
 
   .workflow-step {
     max-width: 100%;
+  }
+
+  .cta-buttons {
+    flex-direction: column;
+  }
+
+  .cta-section {
+    border-radius: 0;
+    margin: 0;
   }
 }
