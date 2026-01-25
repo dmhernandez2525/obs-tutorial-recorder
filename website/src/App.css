@@ -440,6 +440,146 @@ section h2 {
   font-size: 0.875rem;
 }
 
+/* Coming Soon Section */
+.coming-soon {
+  background: linear-gradient(135deg, #4a1e9e 0%, #7c3aed 50%, #8b5cf6 100%);
+  color: #fff;
+  border-radius: 12px;
+  margin: 2rem auto;
+  max-width: 1200px;
+  position: relative;
+  overflow: hidden;
+}
+
+.coming-soon::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 20% 50%, rgba(255,255,255,0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.coming-soon h2 {
+  color: #fff;
+}
+
+.coming-soon-badge {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+  width: fit-content;
+}
+
+.coming-soon .section-description {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.coming-soon-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-bottom: 2rem;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.coming-soon-before, .coming-soon-after {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.coming-soon-before h3, .coming-soon-after h3 {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.coming-soon-before {
+  opacity: 0.7;
+}
+
+.coming-soon-before ul {
+  list-style: none;
+}
+
+.coming-soon-before li {
+  padding: 0.35rem 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+}
+
+.coming-soon-after {
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.user-msg, .assistant-msg {
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.user-msg {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.assistant-msg {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.speaker {
+  font-weight: 600;
+  margin-right: 0.5rem;
+}
+
+.coming-soon-features {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  max-width: 700px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.cs-feature {
+  padding: 1rem;
+}
+
+.cs-stat {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 0.25rem;
+}
+
+.cs-label {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+@media (max-width: 768px) {
+  .coming-soon-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .coming-soon-features {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* Folder Structure */
 .folder-structure {
   background: #f8f9fa;

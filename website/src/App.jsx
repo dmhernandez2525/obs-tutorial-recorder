@@ -277,6 +277,63 @@ function App() {
         </div>
       </section>
 
+      <section className="coming-soon">
+        <div className="coming-soon-badge">Coming Soon</div>
+        <h2>Live Recording Assistant</h2>
+        <p className="section-description">Control your recordings with natural voice commands. Powered by PersonaPlex full duplex AI.</p>
+
+        <div className="coming-soon-grid">
+          <div className="coming-soon-before">
+            <h3>Current Experience</h3>
+            <ul>
+              <li>Click menubar icon</li>
+              <li>Select profile from dropdown</li>
+              <li>Enter project name</li>
+              <li>Click Start button</li>
+              <li>Record your tutorial</li>
+              <li>Click Stop button</li>
+            </ul>
+          </div>
+
+          <div className="coming-soon-after">
+            <h3>With PersonaPlex</h3>
+            <div className="conversation">
+              <div className="user-msg">
+                <span className="speaker">You:</span> "Start recording the auth tutorial"
+              </div>
+              <div className="assistant-msg">
+                <span className="speaker">Assistant:</span> "Got it, starting authentication tutorial..."
+              </div>
+              <div className="user-msg">
+                <span className="speaker">You:</span> "Add a marker for the login section"
+              </div>
+              <div className="assistant-msg">
+                <span className="speaker">Assistant:</span> "Marker added at 2:45"
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="coming-soon-features">
+          <div className="cs-feature">
+            <span className="cs-stat">&lt;500ms</span>
+            <span className="cs-label">Response Time</span>
+          </div>
+          <div className="cs-feature">
+            <span className="cs-stat">Full Duplex</span>
+            <span className="cs-label">Natural Interruption</span>
+          </div>
+          <div className="cs-feature">
+            <span className="cs-stat">100%</span>
+            <span className="cs-label">Local Processing</span>
+          </div>
+          <div className="cs-feature">
+            <span className="cs-stat">Hands-Free</span>
+            <span className="cs-label">Voice Control</span>
+          </div>
+        </div>
+      </section>
+
       <section className="folder-structure">
         <h2>Organized Output</h2>
         <p className="section-description">Every recording session is automatically organized with session logs and metadata.</p>
