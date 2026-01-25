@@ -738,6 +738,50 @@ The build script compiles all Swift files and creates the app bundle at `~/Deskt
 | Microphone | OBS |
 | Accessibility | Terminal |
 
+---
+
+## Coming Soon: Live Recording Assistant
+
+**Powered by PersonaPlex Full Duplex AI**
+
+Transform your tutorial recordings with natural voice interaction. Instead of clicking buttons to start, stop, and manage recordings, simply have a conversation with your recording assistant.
+
+### Current Experience
+```
+Click menubar → Select profile → Enter name → Click start → Record → Click stop
+```
+
+### With PersonaPlex
+```
+You: "Start recording the authentication tutorial"
+Assistant: "Got it, starting recording for authentication tutorial..."
+
+[Recording in progress]
+
+You: "Add a marker here for the login section"
+Assistant: "Marker added at 2:45 for login section"
+
+You: "Stop recording and add a note about the password reset"
+Assistant: "Stopped. I've added a note about password reset to the metadata."
+```
+
+### Features
+
+| Feature | Description |
+|---------|-------------|
+| **Voice Commands** | Start, stop, pause, mark sections with natural speech |
+| **Back-channeling** | Verbal confirmations without interrupting your flow |
+| **Smart Markers** | Add chapter markers and notes by voice during recording |
+| **Session Context** | AI remembers what you're recording and suggests profile |
+| **Hands-Free Control** | Perfect for tutorials where your hands are on the keyboard |
+
+### Technical Requirements
+
+- 24GB+ VRAM (Mac M2 Pro or higher)
+- 32GB RAM recommended
+- Runs 100% locally - no cloud required
+- <500ms response time
+
 ## License
 
 MIT License - See LICENSE file for details.
