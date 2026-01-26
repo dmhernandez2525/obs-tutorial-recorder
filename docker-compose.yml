@@ -1,3 +1,5 @@
+name: obs-tutorial-recorder
+
 version: '3.8'
 
 services:
