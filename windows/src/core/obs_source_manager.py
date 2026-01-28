@@ -286,10 +286,33 @@ class OBSSourceManager:
     ) -> bool:
         """
         Create a camera (DirectShow video) capture source.
+        If device_name is generic (like "Camera 1"), tries to find actual device.
         """
-        # Get the actual device ID
+        # Try to get the actual device ID
         device = self._device_enum.find_camera_by_name(device_name)
-        device_id = device.device_id if device else device_name
+
+        if device:
+            device_id = device.device_id
+            log_debug(f"Found device '{device_name}' -> '{device_id}'")
+        else:
+            # If device_name is a generic name like "Camera 1", try to use index
+            if device_name.lower().startswith("camera "):
+                try:
+                    # Extract index from "Camera N" and get device by index
+                    index = int(device_name.split()[-1]) - 1
+                    cameras = self._device_enum.get_cameras()
+                    if 0 <= index < len(cameras):
+                        device_id = cameras[index].device_id
+                        log_info(f"Mapped '{device_name}' to device: {cameras[index].name} ({device_id})")
+                    else:
+                        device_id = device_name
+                        log_warning(f"No camera at index {index}, using name as-is")
+                except (ValueError, IndexError):
+                    device_id = device_name
+                    log_warning(f"Could not parse camera index from '{device_name}'")
+            else:
+                device_id = device_name
+                log_warning(f"Device '{device_name}' not found, using name as ID")
 
         settings = {
             "video_device_id": device_id,
@@ -327,13 +350,29 @@ class OBSSourceManager:
     ) -> bool:
         """
         Create an audio input capture source.
+        If device_name is generic, tries to find actual device.
         """
         device = self._device_enum.find_audio_by_name(device_name)
-        device_id = device.device_id if device else device_name
 
-        # Use "default" for default device
-        if device_id.lower() in ["default", "microphone", "built-in microphone"]:
-            device_id = "default"
+        if device:
+            device_id = device.device_id
+            log_debug(f"Found audio device '{device_name}' -> '{device_id}'")
+        else:
+            # Check for generic names
+            generic_names = ["microphone", "mic", "audio", "default"]
+            if device_name.lower() in generic_names:
+                # Use default device
+                device_id = "default"
+                log_info(f"Using default audio device for '{device_name}'")
+            else:
+                # Try to use the first available audio device
+                audio_devices = self._device_enum.get_audio_inputs()
+                if audio_devices:
+                    device_id = audio_devices[0].device_id
+                    log_info(f"Mapped '{device_name}' to first audio device: {audio_devices[0].name}")
+                else:
+                    device_id = "default"
+                    log_warning(f"No audio devices found, using default")
 
         settings = {
             "device_id": device_id
@@ -733,11 +772,16 @@ class OBSSourceManager:
         # Ensure path uses forward slashes (OBS preference)
         record_path = record_path.replace("\\", "/")
 
+        # Source Record plugin settings:
+        # - record_mode: 3 = OUTPUT_MODE_RECORDING (records when OBS is recording)
+        # - path: directory path (not full file path!)
+        # - filename_formatting: the filename template without extension
+        # - rec_format: container format (mov for better compatibility)
         filter_settings = {
             "record_mode": 3,  # OUTPUT_MODE_RECORDING - sync with OBS recording
             "path": record_path,
             "filename_formatting": filename,
-            "rec_format": "mkv"
+            "rec_format": "mov"  # Use mov for better compatibility
         }
 
         # First try to remove existing filter (may not exist, that's okay)

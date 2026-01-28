@@ -20,6 +20,7 @@ import psutil
 
 from .obs_websocket import OBSWebSocketSync
 from .obs_source_manager import OBSSourceManager, DEFAULT_SCENE_NAME
+from .transcription import get_transcription_manager
 from ..utils.config import ProfileConfiguration, get_config_manager
 from ..utils.paths import (
     get_recordings_base,
@@ -460,9 +461,9 @@ class RecordingManager:
             progress("Collecting recordings...")
             self._collect_recordings()
 
-            # Step 5: Extract audio (optional)
-            # progress("Extracting audio...")
-            # self._extract_audio()
+            # Step 5: Transcribe the main recording
+            progress("Starting transcription...")
+            self._transcribe_recording()
 
             log_success("Recording stopped successfully")
 
@@ -560,6 +561,57 @@ class RecordingManager:
             cleaned = re.sub(pattern2, '', filename)
 
         return cleaned if cleaned else filename
+
+    def _transcribe_recording(self):
+        """Transcribe the main recording audio."""
+        if not self._session:
+            return
+
+        transcription_manager = get_transcription_manager()
+
+        if not transcription_manager.is_available:
+            log_warning("Transcription not available - faster-whisper not installed")
+            log_warning("Install with: pip install faster-whisper")
+            return
+
+        # Find the session folder with recordings
+        raw_dir = self._session.raw_dir
+        if not raw_dir.exists():
+            log_warning("No raw directory found for transcription")
+            return
+
+        # Find the most recent session folder
+        session_folders = sorted([f for f in raw_dir.iterdir() if f.is_dir()], reverse=True)
+        if not session_folders:
+            log_warning("No session folders found for transcription")
+            return
+
+        session_folder = session_folders[0]
+
+        # Find the main composite recording (usually the largest file or first video)
+        video_files = list(session_folder.glob("*.mkv")) + list(session_folder.glob("*.mp4")) + list(session_folder.glob("*.mov"))
+
+        if not video_files:
+            log_warning("No video files found for transcription")
+            return
+
+        # Use the first (or largest) video file
+        main_video = max(video_files, key=lambda f: f.stat().st_size)
+        log_info(f"Transcribing: {main_video.name}")
+
+        try:
+            def on_progress(msg):
+                log_info(f"[Transcription] {msg}")
+
+            result = transcription_manager.transcribe_video(main_video, on_progress)
+
+            if result.success:
+                log_success(f"Transcription complete: {result.output_path}")
+            else:
+                log_warning(f"Transcription failed: {result.message}")
+
+        except Exception as e:
+            log_error(f"Transcription error: {e}")
 
     def _extract_audio(self):
         """Extract audio from composite recording using ffmpeg."""
