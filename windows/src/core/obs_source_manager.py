@@ -350,7 +350,7 @@ class OBSSourceManager:
     ) -> bool:
         """
         Create an audio input capture source.
-        If device_name is generic, tries to find actual device.
+        If device_name is generic (like "Mic 1"), tries to find actual device by index.
         """
         device = self._device_enum.find_audio_by_name(device_name)
 
@@ -358,10 +358,23 @@ class OBSSourceManager:
             device_id = device.device_id
             log_debug(f"Found audio device '{device_name}' -> '{device_id}'")
         else:
-            # Check for generic names
-            generic_names = ["microphone", "mic", "audio", "default"]
-            if device_name.lower() in generic_names:
-                # Use default device
+            # Check for generic names like "Mic 1", "Mic 2", etc.
+            if device_name.lower().startswith("mic "):
+                try:
+                    # Extract index from "Mic N" and get device by index
+                    index = int(device_name.split()[-1]) - 1
+                    audio_devices = self._device_enum.get_audio_inputs()
+                    if 0 <= index < len(audio_devices):
+                        device_id = audio_devices[index].device_id
+                        log_info(f"Mapped '{device_name}' to audio device: {audio_devices[index].name} ({device_id})")
+                    else:
+                        device_id = "default"
+                        log_warning(f"No audio device at index {index}, using default")
+                except (ValueError, IndexError):
+                    device_id = "default"
+                    log_warning(f"Could not parse mic index from '{device_name}', using default")
+            elif device_name.lower() in ["microphone", "mic", "audio", "default"]:
+                # Use default device for generic single-mic names
                 device_id = "default"
                 log_info(f"Using default audio device for '{device_name}'")
             else:

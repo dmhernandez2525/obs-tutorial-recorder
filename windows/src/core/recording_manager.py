@@ -267,22 +267,25 @@ class RecordingManager:
         # Check for multi-camera profiles using explicit patterns
         profile_lower = profile_name.lower()
         is_multi_camera = (
-            "10cameras" in profile_lower or
-            "10-cameras" in profile_lower or
+            "7cameras" in profile_lower or
+            "7-cameras" in profile_lower or
             "multi" in profile_lower or
-            profile_name.endswith("-10") or
-            profile_name.endswith("10Cameras")
+            profile_name.endswith("-7") or
+            profile_name.endswith("7Cameras")
         )
 
         if is_multi_camera:
+            # Multi-camera setup: 7 cameras, 7 mics (one per camera), 1 display
+            # All sources export separately via ISO recording
             return ProfileConfiguration(
                 profile_name=profile_name,
                 displays=["Display 1"],
-                cameras=[f"Camera {i}" for i in range(1, 11)],
-                audio_inputs=["Microphone"],
+                cameras=[f"Camera {i}" for i in range(1, 8)],  # 7 cameras
+                audio_inputs=[f"Mic {i}" for i in range(1, 8)],  # 7 mics
                 is_configured=False
             )
         else:
+            # Single camera setup
             return ProfileConfiguration(
                 profile_name=profile_name,
                 displays=["Display 1"],
