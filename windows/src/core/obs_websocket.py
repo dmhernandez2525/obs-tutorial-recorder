@@ -5,7 +5,6 @@ Communicates with OBS Studio via WebSocket on port 4455.
 
 import asyncio
 import json
-import re
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 
@@ -495,7 +494,9 @@ class OBSWebSocketSync:
     def _run(self, coro):
         loop = self._get_loop()
         if loop.is_running():
-            # If we're already in an async context, create a new task
+            # If we're already in an async context, run in thread-safe manner
+            # Note: This may have unexpected behavior if called from the wrong context
+            log_debug("[WS] Running coroutine in existing event loop context")
             future = asyncio.run_coroutine_threadsafe(coro, loop)
             return future.result(timeout=30)
         else:

@@ -3,9 +3,11 @@ Recording Manager for Windows.
 Handles the complete recording lifecycle.
 """
 
+import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -141,11 +143,11 @@ class RecordingManager:
 
         try:
             log_info(f"[RecMgr] Launching OBS from: {obs_path}")
-            # Use 'start' command for better Windows compatibility
+            # Launch OBS directly without shell=True for security
             subprocess.Popen(
-                f'start "" "{obs_path}"',
-                shell=True,
-                cwd=str(obs_path.parent)
+                [str(obs_path)],
+                cwd=str(obs_path.parent),
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
             )
             log_info("[RecMgr] OBS launch command sent")
 
@@ -182,7 +184,6 @@ class RecordingManager:
 
     def _check_websocket_listening(self) -> bool:
         """Check if something is listening on WebSocket port 4455."""
-        import socket
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(1)
@@ -247,7 +248,6 @@ class RecordingManager:
                 "recordings": []
             }
 
-            import json
             with open(project_path / "metadata.json", 'w') as f:
                 json.dump(metadata, f, indent=2)
 
@@ -263,7 +263,17 @@ class RecordingManager:
         log_info(f"[RecMgr] Creating default configuration for profile: {profile_name}")
 
         # Default configuration similar to Mac's createDefaultConfiguration()
-        if "10" in profile_name or "multi" in profile_name.lower():
+        # Check for multi-camera profiles using explicit patterns
+        profile_lower = profile_name.lower()
+        is_multi_camera = (
+            "10cameras" in profile_lower or
+            "10-cameras" in profile_lower or
+            "multi" in profile_lower or
+            profile_name.endswith("-10") or
+            profile_name.endswith("10Cameras")
+        )
+
+        if is_multi_camera:
             return ProfileConfiguration(
                 profile_name=profile_name,
                 displays=["Display 1"],
@@ -460,8 +470,8 @@ class RecordingManager:
             if self._session:
                 try:
                     os.startfile(str(self._session.project_path))
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_warning(f"Could not open project folder: {e}")
 
             return True
 
@@ -618,7 +628,6 @@ class RecordingManager:
             metadata_file = folder / "metadata.json"
             if metadata_file.exists():
                 try:
-                    import json
                     with open(metadata_file, 'r') as f:
                         metadata = json.load(f)
                     projects.append({

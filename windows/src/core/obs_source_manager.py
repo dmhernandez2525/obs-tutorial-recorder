@@ -5,7 +5,7 @@ Handles profile, scene, and source configuration via WebSocket.
 
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from .obs_websocket import OBSWebSocketSync, OBSResponse
 from .device_enumerator import get_device_enumerator, VideoDevice, AudioDevice
@@ -27,6 +27,9 @@ ISO_FILTER_NAME = "ISO_Record"
 
 # Default scene name - consistent across all profiles (like Mac version)
 DEFAULT_SCENE_NAME = "Tutorial Recording"
+
+# Default camera resolution
+DEFAULT_CAMERA_RESOLUTION = "1920x1080"
 
 
 class OBSSourceManager:
@@ -291,7 +294,7 @@ class OBSSourceManager:
         settings = {
             "video_device_id": device_id,
             "res_type": 1,  # Custom resolution
-            "resolution": "1920x1080",
+            "resolution": DEFAULT_CAMERA_RESOLUTION,
         }
 
         response = self.ws.create_input(
@@ -457,8 +460,9 @@ class OBSSourceManager:
             return False
 
         if extra:
-            log_warning(f"Extra sources (not in config): {extra}")
-            return False
+            # Extra sources are okay - just log a warning, don't fail
+            log_warning(f"Extra sources in scene (not in config): {extra}")
+            log_info("Extra sources are allowed - scene has all required sources")
 
         log_success(f"Scene '{scene_name}' has all expected sources")
         return True
@@ -736,8 +740,10 @@ class OBSSourceManager:
             "rec_format": "mkv"
         }
 
-        # First try to remove existing filter
-        self.ws.remove_source_filter(source_name, ISO_FILTER_NAME)
+        # First try to remove existing filter (may not exist, that's okay)
+        remove_response = self.ws.remove_source_filter(source_name, ISO_FILTER_NAME)
+        if remove_response.success:
+            log_debug(f"Removed existing ISO filter from: {source_name}")
         time.sleep(0.2)
 
         response = self.ws.create_source_filter(
