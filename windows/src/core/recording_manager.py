@@ -267,11 +267,11 @@ class RecordingManager:
         # Check for multi-camera profiles using explicit patterns
         profile_lower = profile_name.lower()
         is_multi_camera = (
-            "7cameras" in profile_lower or
-            "7-cameras" in profile_lower or
+            "7cammic" in profile_lower or
+            "7cam" in profile_lower or
+            "7-cam" in profile_lower or
             "multi" in profile_lower or
-            profile_name.endswith("-7") or
-            profile_name.endswith("7Cameras")
+            profile_name.endswith("-7")
         )
 
         if is_multi_camera:

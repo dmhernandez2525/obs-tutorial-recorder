@@ -21,7 +21,7 @@ from ..utils.logger import log_info
 class ProfileSetupDialog:
     """
     Dialog for configuring recording profiles.
-    Supports up to 10 cameras for the PC-10Cameras profile.
+    Supports up to 7 cameras and 7 mics for the PC-7CamMic profile.
     """
 
     def __init__(

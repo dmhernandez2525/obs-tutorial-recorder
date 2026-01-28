@@ -80,7 +80,7 @@ When you launch Tutorial Recorder for the first time, a setup wizard appears:
 2. **Choose Profile**: Select from presets or create custom:
    - **Mac Multi-Screen** - Multiple displays + external cameras
    - **MacBook Single** - Built-in display + FaceTime camera
-   - **PC 10 Cameras** - Single display + multiple cameras
+   - **PC 7 Cam + Mic** - Single display + 7 cameras + 7 mics
    - **＋ Create Custom Profile** - Name it whatever you want
 3. **Configure Sources**: Check the displays, cameras, and audio inputs you want to use
 4. **Save & Continue**: App automatically configures OBS with your selections
@@ -154,7 +154,7 @@ Tutorial Recorder supports multiple recording profiles for different hardware se
 
 - **Mac Multi-Screen** - Multiple displays with external camera and microphone
 - **MacBook Single** - Single built-in display with FaceTime camera and built-in microphone
-- **PC 10 Cameras** - Single display with multiple camera sources
+- **PC 7 Cam + Mic** - Single display with 7 cameras and 7 microphones
 
 #### Creating Custom Profiles
 

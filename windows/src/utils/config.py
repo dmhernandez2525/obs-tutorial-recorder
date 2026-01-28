@@ -137,8 +137,8 @@ class ConfigManager:
                 audio_inputs=["Microphone"],
                 is_configured=False,
             ),
-            "PC-10Cameras": ProfileConfiguration(
-                profile_name="PC-10Cameras",
+            "PC-7CamMic": ProfileConfiguration(
+                profile_name="PC-7CamMic",
                 displays=["Display 1"],
                 cameras=[f"Camera {i}" for i in range(1, 11)],
                 audio_inputs=["Microphone"],
