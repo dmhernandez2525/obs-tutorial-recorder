@@ -140,8 +140,8 @@ class ConfigManager:
             "PC-7CamMic": ProfileConfiguration(
                 profile_name="PC-7CamMic",
                 displays=["Display 1"],
-                cameras=[f"Camera {i}" for i in range(1, 11)],
-                audio_inputs=["Microphone"],
+                cameras=[f"Camera {i}" for i in range(1, 8)],  # 7 cameras
+                audio_inputs=[f"Mic {i}" for i in range(1, 8)],  # 7 mics
                 is_configured=False,
             ),
         }
