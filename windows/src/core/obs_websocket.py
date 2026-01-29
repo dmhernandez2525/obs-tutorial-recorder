@@ -193,24 +193,50 @@ class OBSWebSocket:
             self._connected = False
             log_info("Disconnected from OBS WebSocket")
 
+    async def reconnect(self, max_retries: int = 5) -> bool:
+        """Attempt to reconnect to OBS WebSocket."""
+        log_info("[WS] Attempting to reconnect...")
+        self._connected = False
+        if self._ws:
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
+            self._ws = None
+        await asyncio.sleep(1.0)  # Brief pause before reconnecting
+        return await self.connect(max_retries=max_retries, retry_delay=1.0)
+
     async def send_request(
         self,
         request_type: str,
         request_data: Optional[Dict[str, Any]] = None,
-        timeout: float = 10.0
+        timeout: float = 10.0,
+        retry_on_disconnect: bool = True
     ) -> OBSResponse:
         """
         Send a request to OBS and wait for response.
+        Automatically attempts reconnection on connection errors.
         """
         if not self.connected:
-            log_error(f"[WS] Cannot send {request_type}: Not connected to OBS")
-            return OBSResponse(
-                success=False,
-                request_type=request_type,
-                request_id="",
-                data={},
-                error_message="Not connected to OBS"
-            )
+            if retry_on_disconnect:
+                log_warning(f"[WS] Not connected, attempting reconnect before {request_type}...")
+                if not await self.reconnect():
+                    return OBSResponse(
+                        success=False,
+                        request_type=request_type,
+                        request_id="",
+                        data={},
+                        error_message="Not connected to OBS and reconnect failed"
+                    )
+            else:
+                log_error(f"[WS] Cannot send {request_type}: Not connected to OBS")
+                return OBSResponse(
+                    success=False,
+                    request_type=request_type,
+                    request_id="",
+                    data={},
+                    error_message="Not connected to OBS"
+                )
 
         request_id = self._next_request_id()
 
@@ -279,7 +305,20 @@ class OBSWebSocket:
                 error_message="Request timed out"
             )
         except Exception as e:
-            log_error(f"[WS] Request {request_type} failed: {type(e).__name__}: {e}")
+            error_msg = f"{type(e).__name__}: {e}"
+            log_error(f"[WS] Request {request_type} failed: {error_msg}")
+
+            # Mark connection as lost on connection errors
+            if "ConnectionClosed" in type(e).__name__ or "close frame" in str(e).lower():
+                self._connected = False
+
+                # Try to reconnect and retry the request once
+                if retry_on_disconnect:
+                    log_info(f"[WS] Connection lost, attempting reconnect and retry for {request_type}...")
+                    if await self.reconnect():
+                        log_info(f"[WS] Reconnected, retrying {request_type}...")
+                        return await self.send_request(request_type, request_data, timeout, retry_on_disconnect=False)
+
             return OBSResponse(
                 success=False,
                 request_type=request_type,
@@ -537,6 +576,9 @@ class OBSWebSocketSync:
 
     def connect(self, max_retries: int = 30, retry_delay: float = 1.0) -> bool:
         return self._run(self._async_client.connect(max_retries, retry_delay))
+
+    def reconnect(self, max_retries: int = 5) -> bool:
+        return self._run(self._async_client.reconnect(max_retries))
 
     def disconnect(self):
         self._run(self._async_client.disconnect())

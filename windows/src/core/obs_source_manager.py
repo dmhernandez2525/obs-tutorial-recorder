@@ -683,6 +683,7 @@ class OBSSourceManager:
         """
         Configure a complete OBS profile with scenes and sources.
         Uses DEFAULT_SCENE_NAME for consistency (like Mac version).
+        Only adds missing sources - does NOT clear existing ones.
         """
         profile_name = profile_config.profile_name
         if scene_name is None:
@@ -727,33 +728,42 @@ class OBSSourceManager:
         self.set_current_scene(scene_name)
         time.sleep(0.5)
 
-        # Step 5: Clear existing sources
-        log_debug(f"[SrcMgr] Clearing scene: {scene_name}")
-        self.clear_scene(scene_name)
+        # Step 5: Get existing sources to only add missing ones
+        existing_sources = set(self.get_scene_sources(scene_name))
+        log_debug(f"[SrcMgr] Existing sources: {existing_sources}")
 
-        # Step 6: Add display captures
+        # Step 6: Add display captures (only if missing)
         log_debug(f"[SrcMgr] Adding {len(profile_config.displays)} display(s)")
         for idx, display_name in enumerate(profile_config.displays):
             source_name = f"Display {idx + 1}"
-            log_debug(f"[SrcMgr] Creating display capture: {source_name} (index {idx})")
-            self.create_display_capture(scene_name, source_name, idx)
-            time.sleep(0.3)
+            if source_name not in existing_sources:
+                log_debug(f"[SrcMgr] Creating display capture: {source_name} (index {idx})")
+                self.create_display_capture(scene_name, source_name, idx)
+                time.sleep(0.5)  # Increased delay for stability
+            else:
+                log_debug(f"[SrcMgr] Display already exists: {source_name}")
 
-        # Step 7: Add camera captures
+        # Step 7: Add camera captures (only if missing)
         log_debug(f"[SrcMgr] Adding {len(profile_config.cameras)} camera(s)")
         for camera_name in profile_config.cameras:
             source_name = camera_name
-            log_debug(f"[SrcMgr] Creating camera capture: {source_name}")
-            self.create_camera_capture(scene_name, source_name, camera_name)
-            time.sleep(0.3)
+            if source_name not in existing_sources:
+                log_debug(f"[SrcMgr] Creating camera capture: {source_name}")
+                self.create_camera_capture(scene_name, source_name, camera_name)
+                time.sleep(0.5)  # Increased delay for stability
+            else:
+                log_debug(f"[SrcMgr] Camera already exists: {source_name}")
 
-        # Step 8: Add audio captures
+        # Step 8: Add audio captures (only if missing)
         log_debug(f"[SrcMgr] Adding {len(profile_config.audio_inputs)} audio input(s)")
         for audio_name in profile_config.audio_inputs:
             source_name = audio_name
-            log_debug(f"[SrcMgr] Creating audio capture: {source_name}")
-            self.create_audio_capture(scene_name, source_name, audio_name)
-            time.sleep(0.3)
+            if source_name not in existing_sources:
+                log_debug(f"[SrcMgr] Creating audio capture: {source_name}")
+                self.create_audio_capture(scene_name, source_name, audio_name)
+                time.sleep(0.5)  # Increased delay for stability
+            else:
+                log_debug(f"[SrcMgr] Audio already exists: {source_name}")
 
         # Step 9: Verify configuration
         self.verify_and_fix_input_settings(scene_name, profile_config)
