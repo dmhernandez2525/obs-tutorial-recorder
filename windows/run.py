@@ -18,38 +18,72 @@ sys.path.insert(0, str(src_path))
 print(f"[DEBUG] Added to path: {src_path}")
 
 
+def run_main_app():
+    """Run the main application after setup is complete."""
+    print("[DEBUG] run_main_app() starting")
+
+    from src.app import get_app
+    from src.ui.main_window import MainWindow
+    from src.utils.logger import log_info
+
+    # Initialize app
+    print("[DEBUG] Initializing app...")
+    app = get_app()
+    print("[DEBUG] App initialized")
+
+    log_info("OBS Tutorial Recorder starting...")
+
+    # Create and run main window
+    print("[DEBUG] Creating MainWindow...")
+    window = MainWindow(app)
+    print("[DEBUG] MainWindow created, starting main loop...")
+
+    window.run()
+    print("[DEBUG] Main loop ended")
+
+
 def main():
     """Main entry point."""
     print("[DEBUG] main() starting")
 
     try:
-        print("[DEBUG] Importing app module...")
-        from src.app import get_app, shutdown_app
-        print("[DEBUG] App module imported")
-
-        print("[DEBUG] Importing MainWindow...")
-        from src.ui.main_window import MainWindow
-        print("[DEBUG] MainWindow imported")
-
-        print("[DEBUG] Importing logger...")
+        print("[DEBUG] Importing modules...")
         from src.utils.logger import log_info, log_error
         print("[DEBUG] Logger imported")
 
-        # Initialize app
-        print("[DEBUG] Initializing app...")
-        app = get_app()
-        print("[DEBUG] App initialized")
+        from src.ui.setup_dialog import run_setup_if_needed
+        from src.core.setup_wizard import get_setup_wizard
+        print("[DEBUG] Setup modules imported")
 
         log_info("OBS Tutorial Recorder starting...")
 
-        # Create and run main window
-        print("[DEBUG] Creating MainWindow...")
-        window = MainWindow(app)
-        print("[DEBUG] MainWindow created, starting main loop...")
+        # Check if setup is needed
+        print("[DEBUG] Checking if setup is needed...")
+        wizard = get_setup_wizard()
 
-        window.run()
+        if wizard.is_first_run():
+            print("[DEBUG] First run detected, showing setup wizard...")
+            log_info("First run - showing setup wizard")
 
-        print("[DEBUG] Main loop ended")
+            # Run setup wizard, then start main app when complete
+            from src.ui.setup_dialog import SetupDialog
+            dialog = SetupDialog(on_complete=run_main_app)
+            dialog.show()
+        else:
+            # Quick check for missing critical components
+            status = wizard.check_all()
+            if not status.can_record:
+                print("[DEBUG] Critical components missing, showing setup wizard...")
+                log_info("Critical components missing - showing setup wizard")
+                from src.ui.setup_dialog import SetupDialog
+                dialog = SetupDialog(on_complete=run_main_app)
+                dialog.show()
+            else:
+                # All good, run main app directly
+                print("[DEBUG] Setup already complete, starting main app...")
+                run_main_app()
+
+        print("[DEBUG] Application ended")
 
     except Exception as e:
         print(f"[ERROR] Application error: {e}")
@@ -59,6 +93,7 @@ def main():
     finally:
         print("[DEBUG] Shutting down...")
         try:
+            from src.app import shutdown_app
             shutdown_app()
         except Exception as e:
             print(f"[ERROR] Shutdown error: {e}")
