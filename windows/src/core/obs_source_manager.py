@@ -937,6 +937,69 @@ class OBSSourceManager:
     # MULTI-TRACK AUDIO RECORDING
     # =========================================================================
 
+    def configure_output_for_multi_track(self, num_tracks: int = 6) -> bool:
+        """
+        Configure OBS Output Settings to record multiple audio tracks.
+
+        This is REQUIRED for multi-track audio recording to work.
+        Even if audio sources are assigned to tracks 1-6, OBS won't record
+        those tracks unless Output Settings are configured.
+
+        Settings changed:
+        - Output Mode: Advanced
+        - Recording Format: MKV (required for multi-track)
+        - Audio Tracks: Enable tracks 1-N
+        """
+        log_info("=" * 50)
+        log_info("CONFIGURING OBS OUTPUT FOR MULTI-TRACK AUDIO")
+        log_info("=" * 50)
+
+        success = True
+
+        # Step 1: Set output mode to Advanced
+        log_debug("Setting output mode to Advanced...")
+        response = self.ws.set_profile_parameter("Output", "Mode", "Advanced")
+        if not response.success:
+            log_warning(f"Failed to set output mode: {response.error_message}")
+            # Continue anyway - may already be set
+        else:
+            log_info("Output mode: Advanced")
+
+        # Step 2: Set recording format to MKV (supports multiple audio tracks)
+        log_debug("Setting recording format to MKV...")
+        response = self.ws.set_profile_parameter("AdvOut", "RecFormat2", "mkv")
+        if not response.success:
+            # Try older parameter name
+            response = self.ws.set_profile_parameter("AdvOut", "RecFormat", "mkv")
+            if not response.success:
+                log_warning(f"Failed to set recording format: {response.error_message}")
+                success = False
+            else:
+                log_info("Recording format: MKV")
+        else:
+            log_info("Recording format: MKV")
+
+        # Step 3: Enable audio tracks 1-N
+        # RecTracks is a bitmask: track 1 = bit 0, track 2 = bit 1, etc.
+        # For 6 tracks: 0b111111 = 63
+        track_mask = (1 << num_tracks) - 1
+        log_debug(f"Setting audio track mask: {track_mask} (tracks 1-{num_tracks})")
+        response = self.ws.set_profile_parameter("AdvOut", "RecTracks", str(track_mask))
+        if not response.success:
+            log_warning(f"Failed to set audio tracks: {response.error_message}")
+            success = False
+        else:
+            log_info(f"Audio tracks enabled: 1-{num_tracks}")
+
+        log_info("=" * 50)
+        if success:
+            log_success("OBS OUTPUT CONFIGURED FOR MULTI-TRACK RECORDING")
+        else:
+            log_warning("OBS OUTPUT CONFIGURATION INCOMPLETE - check settings manually")
+        log_info("=" * 50)
+
+        return success
+
     def configure_audio_tracks(self, audio_sources: List[str]) -> bool:
         """
         Configure each audio source to output to a separate audio track.
@@ -945,11 +1008,17 @@ class OBSSourceManager:
 
         Source Record plugin doesn't support audio-only sources, so we use
         OBS's built-in multi-track recording for microphones.
+
+        Also configures OBS Output Settings to record all tracks.
         """
         log_info("=" * 50)
         log_info("CONFIGURING MULTI-TRACK AUDIO")
         log_info("=" * 50)
         log_info(f"Audio sources: {len(audio_sources)}")
+
+        # First, configure OBS Output Settings to record multiple tracks
+        num_tracks = min(len(audio_sources), 6)
+        self.configure_output_for_multi_track(num_tracks)
 
         if len(audio_sources) > 6:
             log_warning(f"OBS supports 6 audio tracks, but {len(audio_sources)} audio sources configured")
