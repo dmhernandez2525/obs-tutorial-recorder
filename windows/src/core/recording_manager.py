@@ -41,6 +41,42 @@ from ..utils.logger import (
 )
 
 
+def _find_ffmpeg() -> Optional[str]:
+    """Find ffmpeg executable, checking PATH and common install locations."""
+    # Check if ffmpeg is in PATH
+    try:
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
+        if result.returncode == 0:
+            return 'ffmpeg'
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Check common Windows install location
+    ffmpeg_path = Path('C:/ffmpeg/ffmpeg.exe')
+    if ffmpeg_path.exists():
+        return str(ffmpeg_path)
+
+    return None
+
+
+def _find_ffprobe() -> Optional[str]:
+    """Find ffprobe executable, checking PATH and common install locations."""
+    # Check if ffprobe is in PATH
+    try:
+        result = subprocess.run(['ffprobe', '-version'], capture_output=True, timeout=5)
+        if result.returncode == 0:
+            return 'ffprobe'
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Check common Windows install location
+    ffprobe_path = Path('C:/ffmpeg/ffprobe.exe')
+    if ffprobe_path.exists():
+        return str(ffprobe_path)
+
+    return None
+
+
 class RecordingState(Enum):
     """Recording state machine states."""
     IDLE = "idle"
@@ -566,10 +602,19 @@ class RecordingManager:
         """
         log_info("Extracting audio tracks from main recording...")
 
+        # Find ffprobe and ffmpeg
+        ffprobe = _find_ffprobe()
+        ffmpeg = _find_ffmpeg()
+
+        if not ffprobe or not ffmpeg:
+            log_warning("ffmpeg/ffprobe not found, skipping audio extraction")
+            log_warning("Install ffmpeg from https://www.gyan.dev/ffmpeg/builds/")
+            return
+
         # Get track count using ffprobe
         try:
             result = subprocess.run([
-                'ffprobe', '-v', 'quiet', '-print_format', 'json',
+                ffprobe, '-v', 'quiet', '-print_format', 'json',
                 '-show_streams', str(main_recording)
             ], capture_output=True, text=True, timeout=30)
 
@@ -594,7 +639,7 @@ class RecordingManager:
 
                 log_debug(f"Extracting Track {track_num} -> {output_file.name}")
                 extract_result = subprocess.run([
-                    'ffmpeg', '-y', '-i', str(main_recording),
+                    ffmpeg, '-y', '-i', str(main_recording),
                     '-map', f'0:a:{idx}',
                     '-c:a', 'pcm_s16le',
                     str(output_file)
