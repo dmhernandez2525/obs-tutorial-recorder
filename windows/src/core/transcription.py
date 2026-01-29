@@ -15,6 +15,24 @@ from ..utils.paths import get_whisper_models_dir, ensure_dir
 from ..utils.logger import log_info, log_error, log_warning, log_success
 
 
+def _find_ffmpeg() -> Optional[str]:
+    """Find ffmpeg executable, checking PATH and common install locations."""
+    # Check if ffmpeg is in PATH
+    try:
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
+        if result.returncode == 0:
+            return 'ffmpeg'
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Check common Windows install location
+    ffmpeg_path = Path('C:/ffmpeg/ffmpeg.exe')
+    if ffmpeg_path.exists():
+        return str(ffmpeg_path)
+
+    return None
+
+
 class TranscriptionStatus(Enum):
     """Transcription operation status."""
     NOT_AVAILABLE = "not_available"
@@ -108,16 +126,15 @@ class TranscriptionManager:
         if output_path is None:
             output_path = video_path.with_suffix('.wav')
 
-        try:
-            # Check if ffmpeg is available
-            subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            log_error("ffmpeg not found. Please install ffmpeg and add to PATH.")
+        # Find ffmpeg
+        ffmpeg = _find_ffmpeg()
+        if not ffmpeg:
+            log_error("ffmpeg not found. Install from https://www.gyan.dev/ffmpeg/builds/")
             return None
 
         try:
             cmd = [
-                'ffmpeg', '-y',
+                ffmpeg, '-y',
                 '-i', str(video_path),
                 '-vn',  # No video
                 '-acodec', 'pcm_s16le',  # WAV format
