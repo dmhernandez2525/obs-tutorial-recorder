@@ -820,7 +820,11 @@ class OBSSourceManager:
     def enable_iso_recording(self, scene_name: str, record_path: str) -> bool:
         """
         Enable ISO recording for all sources in a scene.
-        Adds Source Record filter to each source.
+        - Video sources (displays, cameras): Use Source Record filter
+        - Audio sources (mics): Use multi-track audio recording
+
+        Source Record plugin doesn't support audio-only sources (wasapi_input_capture),
+        so we configure those to separate audio tracks instead.
         """
         log_info("=" * 50)
         log_info("CONFIGURING ISO RECORDING")
@@ -832,12 +836,9 @@ class OBSSourceManager:
         plugin_installed = self.is_source_record_plugin_installed()
         if not plugin_installed:
             log_error("SOURCE RECORD PLUGIN NOT INSTALLED!")
-            log_error("ISO recording will NOT work without this plugin!")
+            log_error("ISO recording for video sources will NOT work!")
             log_error("Install from: https://obsproject.com/forum/resources/source-record.1285/")
-            log_warning("Continuing without ISO recording capability...")
-            return False
-
-        log_success("Source Record plugin is installed")
+            log_warning("Continuing with multi-track audio only...")
 
         response = self.ws.get_scene_item_list(scene_name)
         if not response.success:
@@ -846,29 +847,64 @@ class OBSSourceManager:
 
         items = response.data.get("sceneItems", [])
         log_info(f"Found {len(items)} items in scene")
-        success_count = 0
+
+        # Separate video and audio sources
+        video_sources = []
+        audio_sources = []
 
         for item in items:
-            source_name = item.get("sourceName")
-            if source_name:
+            source_name = item.get("sourceName", "")
+            # Check if this is an audio-only source (mic)
+            # Note: Cameras with built-in mics are handled separately
+            if source_name.lower().startswith("mic") or source_name.lower() == "microphone":
+                audio_sources.append(source_name)
+            else:
+                video_sources.append(source_name)
+
+        log_info(f"Video sources: {len(video_sources)}")
+        log_info(f"Audio sources: {len(audio_sources)}")
+
+        # Configure video sources with Source Record plugin
+        video_success = 0
+        if plugin_installed and video_sources:
+            log_info("\n--- Configuring video sources with Source Record ---")
+            for source_name in video_sources:
                 log_debug(f"Adding ISO filter to: {source_name}")
                 if self.add_iso_recording_filter(source_name, record_path):
-                    success_count += 1
+                    video_success += 1
                 else:
                     log_warning(f"Failed to add ISO filter to: {source_name}")
                 time.sleep(0.3)
+            log_info(f"Video ISO configured: {video_success}/{len(video_sources)}")
+
+        # Configure audio sources with multi-track recording
+        audio_success = 0
+        if audio_sources:
+            log_info("\n--- Configuring audio sources with multi-track recording ---")
+            if self.configure_audio_tracks(audio_sources):
+                audio_success = len(audio_sources)
+            log_info(f"Audio tracks configured: {audio_success}/{len(audio_sources)}")
 
         log_info("=" * 50)
-        if success_count == len(items):
-            log_success(f"ISO RECORDING CONFIGURED: {success_count}/{len(items)} sources")
-        elif success_count > 0:
-            log_warning(f"ISO RECORDING PARTIALLY CONFIGURED: {success_count}/{len(items)} sources")
+        total_sources = len(video_sources) + len(audio_sources)
+        total_success = video_success + (1 if audio_success > 0 else 0)
+
+        if video_success == len(video_sources) and audio_success > 0:
+            log_success(f"ISO RECORDING FULLY CONFIGURED")
+            log_info(f"  - Video sources: {video_success} with Source Record filters")
+            log_info(f"  - Audio sources: {audio_success} with multi-track recording")
+        elif video_success > 0 or audio_success > 0:
+            log_warning(f"ISO RECORDING PARTIALLY CONFIGURED")
+            log_info(f"  - Video sources: {video_success}/{len(video_sources)}")
+            log_info(f"  - Audio sources: {audio_success}/{len(audio_sources)}")
         else:
             log_error("ISO RECORDING FAILED: No sources configured")
-        log_info(f"Output files will be saved to: {record_path}")
+
+        log_info(f"Video files will be saved to: {record_path}")
+        log_info(f"Audio will be in tracks 1-{min(len(audio_sources), 6)} of main recording")
         log_info("=" * 50)
 
-        return success_count > 0
+        return video_success > 0 or audio_success > 0
 
     def disable_iso_recording(self, scene_name: str) -> bool:
         """
@@ -886,3 +922,88 @@ class OBSSourceManager:
 
         log_info(f"Disabled ISO recording for scene: {scene_name}")
         return True
+
+    # =========================================================================
+    # MULTI-TRACK AUDIO RECORDING
+    # =========================================================================
+
+    def configure_audio_tracks(self, audio_sources: List[str]) -> bool:
+        """
+        Configure each audio source to output to a separate audio track.
+        Track 1 is typically for the composite mix.
+        Audio sources will be assigned to tracks 2-8.
+
+        Source Record plugin doesn't support audio-only sources, so we use
+        OBS's built-in multi-track recording for microphones.
+        """
+        log_info("=" * 50)
+        log_info("CONFIGURING MULTI-TRACK AUDIO")
+        log_info("=" * 50)
+        log_info(f"Audio sources: {len(audio_sources)}")
+
+        if len(audio_sources) > 6:
+            log_warning(f"OBS supports 6 audio tracks, but {len(audio_sources)} audio sources configured")
+            log_warning("Only first 6 audio sources will have dedicated tracks")
+
+        success_count = 0
+        for idx, source_name in enumerate(audio_sources[:6]):  # Max 6 tracks (tracks 1-6)
+            # Assign this source to its own track (track idx+1)
+            # Track mapping: {"1": True, "2": False, ...}
+            track_config = {}
+            for t in range(1, 7):  # Tracks 1-6
+                # Each audio source outputs ONLY to its assigned track
+                track_config[str(t)] = (t == idx + 1)
+
+            log_debug(f"Setting {source_name} -> Track {idx + 1}")
+            response = self.ws.set_input_audio_tracks(source_name, track_config)
+
+            if response.success:
+                log_info(f"Configured {source_name} -> Track {idx + 1}")
+                success_count += 1
+            else:
+                log_warning(f"Failed to configure audio track for {source_name}: {response.error_message}")
+
+        log_info("=" * 50)
+        if success_count == len(audio_sources[:6]):
+            log_success(f"AUDIO TRACKS CONFIGURED: {success_count} sources")
+        else:
+            log_warning(f"AUDIO TRACKS PARTIALLY CONFIGURED: {success_count}/{len(audio_sources[:6])}")
+        log_info("=" * 50)
+
+        return success_count > 0
+
+    def get_audio_source_track_mapping(self, scene_name: str) -> dict:
+        """
+        Get the mapping of audio source names to their track numbers.
+        Returns dict like {"Mic 1": 1, "Mic 2": 2, ...}
+        """
+        mapping = {}
+        response = self.ws.get_scene_item_list(scene_name)
+        if not response.success:
+            return mapping
+
+        items = response.data.get("sceneItems", [])
+        track_num = 1
+
+        for item in items:
+            source_name = item.get("sourceName", "")
+            # Check if this is an audio-only source (mic)
+            if source_name.lower().startswith("mic") or "audio" in source_name.lower():
+                # Get current track assignment
+                track_response = self.ws.get_input_audio_tracks(source_name)
+                if track_response.success:
+                    tracks = track_response.data.get("inputAudioTracks", {})
+                    # Find which track is enabled
+                    for t, enabled in tracks.items():
+                        if enabled:
+                            mapping[source_name] = int(t)
+                            break
+                    else:
+                        # No specific track, assign default
+                        mapping[source_name] = track_num
+                        track_num += 1
+                else:
+                    mapping[source_name] = track_num
+                    track_num += 1
+
+        return mapping

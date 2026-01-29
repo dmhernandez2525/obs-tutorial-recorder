@@ -492,6 +492,7 @@ class RecordingManager:
         """
         Collect ISO recordings from various locations.
         Moves files to the session folder.
+        Extracts audio tracks from main recording.
         """
         if not self._session:
             return
@@ -535,6 +536,7 @@ class RecordingManager:
         ensure_dir(session_folder)
 
         # Move files to session folder
+        main_recording = None
         for file_path in collected_files:
             # Clean up filename (remove OBS timestamp prefix if present)
             new_name = self._clean_filename(file_path.name, timestamp)
@@ -544,10 +546,71 @@ class RecordingManager:
                 if file_path.parent != session_folder:
                     shutil.move(str(file_path), str(dest_path))
                     log_info(f"Collected: {file_path.name} -> {new_name}")
+                    # Track the main recording (largest file without Camera_/Display_ prefix)
+                    if not any(x in new_name for x in ['Camera_', 'Display_', 'Mic_']):
+                        if main_recording is None or dest_path.stat().st_size > main_recording.stat().st_size:
+                            main_recording = dest_path
             except Exception as e:
                 log_error(f"Failed to move {file_path.name}: {e}")
 
         log_success(f"Collected {len(collected_files)} recording(s)")
+
+        # Extract audio tracks from main recording (for mic sources)
+        if main_recording and main_recording.exists():
+            self._extract_audio_tracks(main_recording, session_folder)
+
+    def _extract_audio_tracks(self, main_recording: Path, output_dir: Path):
+        """
+        Extract individual audio tracks from the main recording.
+        OBS multi-track recording puts each mic on a separate track.
+        """
+        log_info("Extracting audio tracks from main recording...")
+
+        # Get track count using ffprobe
+        try:
+            result = subprocess.run([
+                'ffprobe', '-v', 'quiet', '-print_format', 'json',
+                '-show_streams', str(main_recording)
+            ], capture_output=True, text=True, timeout=30)
+
+            if result.returncode != 0:
+                log_warning("ffprobe failed, skipping audio extraction")
+                return
+
+            import json as json_module
+            streams = json_module.loads(result.stdout).get('streams', [])
+            audio_streams = [s for s in streams if s.get('codec_type') == 'audio']
+
+            if len(audio_streams) <= 1:
+                log_debug("Only 1 audio track found, skipping extraction")
+                return
+
+            log_info(f"Found {len(audio_streams)} audio tracks")
+
+            # Extract each audio track
+            for idx, stream in enumerate(audio_streams):
+                track_num = idx + 1
+                output_file = output_dir / f"Mic_{track_num}.wav"
+
+                log_debug(f"Extracting Track {track_num} -> {output_file.name}")
+                extract_result = subprocess.run([
+                    'ffmpeg', '-y', '-i', str(main_recording),
+                    '-map', f'0:a:{idx}',
+                    '-c:a', 'pcm_s16le',
+                    str(output_file)
+                ], capture_output=True, text=True, timeout=300)
+
+                if extract_result.returncode == 0 and output_file.exists():
+                    log_success(f"Extracted: {output_file.name}")
+                else:
+                    log_warning(f"Failed to extract track {track_num}")
+
+        except FileNotFoundError:
+            log_warning("ffmpeg/ffprobe not found, skipping audio extraction")
+        except subprocess.TimeoutExpired:
+            log_warning("Audio extraction timed out")
+        except Exception as e:
+            log_error(f"Audio extraction failed: {e}")
 
     def _clean_filename(self, filename: str, session_timestamp: str) -> str:
         """

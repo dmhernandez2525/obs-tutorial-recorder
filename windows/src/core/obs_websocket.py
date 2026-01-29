@@ -390,6 +390,23 @@ class OBSWebSocket:
             "overlay": overlay
         })
 
+    # Audio Track Management
+
+    async def get_input_audio_tracks(self, input_name: str) -> OBSResponse:
+        """Get which audio tracks an input is assigned to.
+        Returns inputAudioTracks: dict mapping track number (1-6) to boolean.
+        """
+        return await self.send_request("GetInputAudioTracks", {"inputName": input_name})
+
+    async def set_input_audio_tracks(self, input_name: str, audio_tracks: Dict[str, bool]) -> OBSResponse:
+        """Set which audio tracks an input outputs to.
+        audio_tracks: dict like {"1": True, "2": False, ...} for tracks 1-6
+        """
+        return await self.send_request("SetInputAudioTracks", {
+            "inputName": input_name,
+            "inputAudioTracks": audio_tracks
+        })
+
     # Filter Management
 
     async def get_source_filter_list(self, source_name: str) -> OBSResponse:
@@ -576,6 +593,13 @@ class OBSWebSocketSync:
 
     def set_input_settings(self, input_name: str, input_settings: Dict, overlay: bool = True) -> OBSResponse:
         return self._run(self._async_client.set_input_settings(input_name, input_settings, overlay))
+
+    # Audio Track Management
+    def get_input_audio_tracks(self, input_name: str) -> OBSResponse:
+        return self._run(self._async_client.get_input_audio_tracks(input_name))
+
+    def set_input_audio_tracks(self, input_name: str, audio_tracks: Dict[str, bool]) -> OBSResponse:
+        return self._run(self._async_client.set_input_audio_tracks(input_name, audio_tracks))
 
     # Filter Management
     def get_source_filter_list(self, source_name: str) -> OBSResponse:
