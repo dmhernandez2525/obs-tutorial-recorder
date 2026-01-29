@@ -114,26 +114,54 @@ class DeviceEnumerator:
         except Exception as e:
             log_warning(f"ffmpeg enumeration failed: {e}")
 
-        # Method 2: Fallback using PowerShell/WMI
+        # Method 2: Fallback using PowerShell/WMI - get device name AND device path
         if not cameras:
             try:
+                # Query for imaging devices with their DeviceID (device path)
+                # Format output as: Caption|DeviceID
                 result = subprocess.run(
                     ['powershell', '-Command',
-                     'Get-CimInstance Win32_PnPEntity | Where-Object { $_.Caption -match "camera|webcam|video" } | Select-Object -ExpandProperty Caption'],
+                     '''Get-CimInstance Win32_PnPEntity | Where-Object {
+                        ($_.Caption -match "camera|webcam") -and
+                        ($_.Caption -notmatch "microphone|audio") -and
+                        ($_.DeviceID -like "*USB*" -or $_.DeviceID -like "*vid_*")
+                     } | ForEach-Object { "$($_.Caption)|$($_.DeviceID)" }'''],
                     capture_output=True,
                     text=True,
-                    timeout=10
+                    timeout=15
                 )
                 if result.returncode == 0:
-                    for idx, line in enumerate(result.stdout.strip().split('\n')):
-                        name = line.strip()
-                        if name:
-                            cameras.append(VideoDevice(
-                                name=name,
-                                device_id=name,
-                                index=idx
-                            ))
-                            log_debug(f"Found camera (WMI): {name}")
+                    seen_names = set()  # Deduplicate by name
+                    for line in result.stdout.strip().split('\n'):
+                        line = line.strip()
+                        if '|' in line:
+                            parts = line.split('|', 1)
+                            name = parts[0].strip()
+                            device_path = parts[1].strip() if len(parts) > 1 else ""
+
+                            name_lower = name.lower()
+                            if name and name_lower not in seen_names:
+                                if 'microphone' not in name_lower and 'audio' not in name_lower:
+                                    # Convert DeviceID to DirectShow format
+                                    # DeviceID: USB\VID_1D6C&PID_0103&MI_00\...
+                                    # DirectShow: \\?\usb#vid_1d6c&pid_0103&mi_00#...
+                                    if device_path:
+                                        ds_path = device_path.replace('\\', '#').lower()
+                                        ds_path = '\\\\?\\' + ds_path
+                                        # Add DirectShow GUID for video capture
+                                        ds_path += '#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\\global'
+                                        # Combine name and path in OBS format
+                                        device_id = f"{name}:{ds_path}"
+                                    else:
+                                        device_id = name
+
+                                    cameras.append(VideoDevice(
+                                        name=name,
+                                        device_id=device_id,
+                                        index=len(cameras)
+                                    ))
+                                    seen_names.add(name_lower)
+                                    log_debug(f"Found camera (WMI): {name}")
             except Exception as e:
                 log_warning(f"WMI camera enumeration failed: {e}")
 

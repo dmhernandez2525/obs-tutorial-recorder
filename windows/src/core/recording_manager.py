@@ -566,7 +566,7 @@ class RecordingManager:
         return cleaned if cleaned else filename
 
     def _transcribe_recording(self):
-        """Transcribe the main recording audio."""
+        """Transcribe each mic recording separately (7 transcription files)."""
         if not self._session:
             return
 
@@ -586,35 +586,54 @@ class RecordingManager:
         # Find the most recent session folder
         session_folders = sorted([f for f in raw_dir.iterdir() if f.is_dir()], reverse=True)
         if not session_folders:
-            log_warning("No session folders found for transcription")
-            return
+            # Check if files are directly in raw_dir
+            session_folder = raw_dir
+        else:
+            session_folder = session_folders[0]
 
-        session_folder = session_folders[0]
+        # Find all mic recordings (Mic_1.mov, Mic_2.mov, etc.)
+        mic_files = []
+        for ext in ["*.mov", "*.mkv", "*.mp4"]:
+            mic_files.extend([f for f in session_folder.glob(ext) if "Mic" in f.name or "mic" in f.name])
 
-        # Find the main composite recording (usually the largest file or first video)
-        video_files = list(session_folder.glob("*.mkv")) + list(session_folder.glob("*.mp4")) + list(session_folder.glob("*.mov"))
-
-        if not video_files:
-            log_warning("No video files found for transcription")
-            return
-
-        # Use the first (or largest) video file
-        main_video = max(video_files, key=lambda f: f.stat().st_size)
-        log_info(f"Transcribing: {main_video.name}")
-
-        try:
-            def on_progress(msg):
-                log_info(f"[Transcription] {msg}")
-
-            result = transcription_manager.transcribe_video(main_video, on_progress)
-
-            if result.success:
-                log_success(f"Transcription complete: {result.output_path}")
+        if not mic_files:
+            log_warning("No mic recordings found for transcription")
+            # Fall back to transcribing the main composite recording
+            video_files = list(session_folder.glob("*.mkv")) + list(session_folder.glob("*.mp4")) + list(session_folder.glob("*.mov"))
+            if video_files:
+                main_video = max(video_files, key=lambda f: f.stat().st_size)
+                log_info(f"Falling back to main recording: {main_video.name}")
+                mic_files = [main_video]
             else:
-                log_warning(f"Transcription failed: {result.message}")
+                log_warning("No video files found for transcription")
+                return
 
-        except Exception as e:
-            log_error(f"Transcription error: {e}")
+        log_info(f"Found {len(mic_files)} audio file(s) to transcribe")
+
+        # Transcribe each mic file separately
+        for mic_file in sorted(mic_files):
+            log_info(f"Transcribing: {mic_file.name}")
+
+            try:
+                def on_progress(msg):
+                    log_info(f"[Transcription] {msg}")
+
+                # Output transcript named after the mic (e.g., Mic_1_transcript.txt)
+                transcript_name = mic_file.stem + "_transcript.txt"
+                output_path = session_folder / transcript_name
+
+                result = transcription_manager.transcribe_video(mic_file, on_progress)
+
+                if result.success:
+                    # Rename the output to match the mic name
+                    if result.output_path and result.output_path.exists():
+                        result.output_path.rename(output_path)
+                    log_success(f"Transcription complete: {transcript_name}")
+                else:
+                    log_warning(f"Transcription failed for {mic_file.name}: {result.message}")
+
+            except Exception as e:
+                log_error(f"Transcription error for {mic_file.name}: {e}")
 
     def _extract_audio(self):
         """Extract audio from composite recording using ffmpeg."""
