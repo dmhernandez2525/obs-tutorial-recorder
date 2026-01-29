@@ -513,6 +513,30 @@ class OBSWebSocket:
         """Set the recording output directory."""
         return await self.send_request("SetRecordDirectory", {"recordDirectory": directory})
 
+    # Profile Parameter Methods (for Output Settings)
+
+    async def get_profile_parameter(self, category: str, parameter_name: str) -> OBSResponse:
+        """Get a parameter from the current profile configuration.
+        category: Section in profile config (e.g., 'Output', 'Video')
+        parameter_name: Name of the parameter to get
+        """
+        return await self.send_request("GetProfileParameter", {
+            "parameterCategory": category,
+            "parameterName": parameter_name
+        })
+
+    async def set_profile_parameter(self, category: str, parameter_name: str, value: str) -> OBSResponse:
+        """Set a parameter in the current profile configuration.
+        category: Section in profile config (e.g., 'Output', 'Video')
+        parameter_name: Name of the parameter to set
+        value: Value to set (always as string)
+        """
+        return await self.send_request("SetProfileParameter", {
+            "parameterCategory": category,
+            "parameterName": parameter_name,
+            "parameterValue": value
+        })
+
     # Utility Methods
 
     async def get_version(self) -> OBSResponse:
@@ -675,6 +699,13 @@ class OBSWebSocketSync:
 
     def set_record_directory(self, directory: str) -> OBSResponse:
         return self._run(self._async_client.set_record_directory(directory))
+
+    # Profile Parameter Methods
+    def get_profile_parameter(self, category: str, parameter_name: str) -> OBSResponse:
+        return self._run(self._async_client.get_profile_parameter(category, parameter_name))
+
+    def set_profile_parameter(self, category: str, parameter_name: str, value: str) -> OBSResponse:
+        return self._run(self._async_client.set_profile_parameter(category, parameter_name, value))
 
     # Utility
     def get_version(self) -> OBSResponse:
