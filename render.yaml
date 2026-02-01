@@ -10,7 +10,7 @@
 services:
   - type: web
     name: obs-tutorial-site
-    env: static
+    runtime: static
     buildCommand: cd website && npm install && npm run build
     staticPublishPath: ./website/dist
     envVars:
