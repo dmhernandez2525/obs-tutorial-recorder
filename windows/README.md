@@ -1,6 +1,6 @@
 # OBS Tutorial Recorder - Windows
 
-A Windows application for automating OBS Studio recordings with ISO (individual source) recording support. Perfect for multi-camera setups with 7 cameras + 7 mics.
+A Windows application for automating OBS Studio recordings with ISO (individual source) recording support. Perfect for multi-camera setups with up to 6 cameras and 6 mics (OBS supports max 6 audio tracks).
 
 ## Quick Setup
 
@@ -27,7 +27,7 @@ This will:
 ## Features
 
 - **Taskbar Application**: Shows in taskbar like OBS
-- **7 Camera + 7 Mic Support**: Record up to 7 cameras and 7 mics simultaneously
+- **Multi-Camera Support**: Record up to 6 cameras and 6 mics with separate ISO files
 - **ISO Recording**: Each source records to a separate file
 - **Profile Management**: Save and switch between recording configurations
 - **Automatic OBS Control**: Launches OBS, configures profiles, starts/stops recording
@@ -37,7 +37,7 @@ This will:
 
 1. **Run the app**: Double-click `Tutorial Recorder` on your Desktop
 2. **Ensure OBS is running** with WebSocket enabled (see below)
-3. **Select a profile** (PC-Single or PC-7CamMic)
+3. **Select a profile** (PC-Single or PC-6CamMic)
 4. **Enter a project name**
 5. **Click Start Recording**
 

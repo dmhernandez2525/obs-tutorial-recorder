@@ -184,10 +184,10 @@ class DeviceEnumerator:
             except Exception as e:
                 log_warning(f"OpenCV camera enumeration failed: {e}")
 
-        # If still no cameras, add placeholders for 7-camera setup
+        # If still no cameras, add placeholders for 6-camera setup (OBS max 6 audio tracks)
         if not cameras:
             log_warning("No cameras detected, adding placeholders")
-            for i in range(7):
+            for i in range(6):
                 cameras.append(VideoDevice(
                     name=f"Camera {i + 1}",
                     device_id=f"Camera {i + 1}",

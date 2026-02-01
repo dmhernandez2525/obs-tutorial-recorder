@@ -137,11 +137,11 @@ class ConfigManager:
                 audio_inputs=["Microphone"],
                 is_configured=False,
             ),
-            "PC-7CamMic": ProfileConfiguration(
-                profile_name="PC-7CamMic",
+            "PC-6CamMic": ProfileConfiguration(
+                profile_name="PC-6CamMic",
                 displays=["Display 1"],
-                cameras=[f"Camera {i}" for i in range(1, 8)],  # 7 cameras
-                audio_inputs=[f"Mic {i}" for i in range(1, 8)],  # 7 mics
+                cameras=[f"Camera {i}" for i in range(1, 7)],  # 6 cameras (OBS max 6 audio tracks)
+                audio_inputs=[f"Mic {i}" for i in range(1, 7)],  # 6 mics
                 is_configured=False,
             ),
         }

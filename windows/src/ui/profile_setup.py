@@ -21,7 +21,7 @@ from ..utils.logger import log_info
 class ProfileSetupDialog:
     """
     Dialog for configuring recording profiles.
-    Supports up to 7 cameras and 7 mics for the PC-7CamMic profile.
+    Supports up to 6 cameras and 6 mics for the PC-6CamMic profile (OBS max 6 audio tracks).
     """
 
     def __init__(

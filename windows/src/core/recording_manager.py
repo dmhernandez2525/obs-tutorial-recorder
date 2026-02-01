@@ -303,21 +303,21 @@ class RecordingManager:
         # Check for multi-camera profiles using explicit patterns
         profile_lower = profile_name.lower()
         is_multi_camera = (
-            "7cammic" in profile_lower or
-            "7cam" in profile_lower or
-            "7-cam" in profile_lower or
+            "6cammic" in profile_lower or
+            "6cam" in profile_lower or
+            "6-cam" in profile_lower or
             "multi" in profile_lower or
-            profile_name.endswith("-7")
+            profile_name.endswith("-6")
         )
 
         if is_multi_camera:
-            # Multi-camera setup: 7 cameras, 7 mics (one per camera), 1 display
-            # All sources export separately via ISO recording
+            # Multi-camera setup: 6 cameras, 6 mics (one per camera), 1 display
+            # OBS supports max 6 audio tracks, so we limit to 6 mics
             return ProfileConfiguration(
                 profile_name=profile_name,
                 displays=["Display 1"],
-                cameras=[f"Camera {i}" for i in range(1, 8)],  # 7 cameras
-                audio_inputs=[f"Mic {i}" for i in range(1, 8)],  # 7 mics
+                cameras=[f"Camera {i}" for i in range(1, 7)],  # 6 cameras
+                audio_inputs=[f"Mic {i}" for i in range(1, 7)],  # 6 mics
                 is_configured=False
             )
         else:
